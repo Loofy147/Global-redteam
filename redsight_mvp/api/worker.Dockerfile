@@ -13,8 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application's code into the container at /app
 COPY . .
 
-# Expose port 8000 to the outside world
-EXPOSE 8000
-
-# Command to run the application using Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app_factory:app"]
+# Command to run the Celery worker
+CMD ["celery", "-A", "main.celery", "worker", "--loglevel=info"]

@@ -22,5 +22,16 @@ services:
       REDIS_URL: redis://redis:6379
     volumes:
       - ./api:/app
+  worker:
+    build:
+      context: ./api
+      dockerfile: worker.Dockerfile
+    depends_on:
+      - redis
+    environment:
+      DATABASE_URL: postgresql://redsight:redsightpass@postgres:5432/redsight
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./api:/app
 volumes:
   pgdata:

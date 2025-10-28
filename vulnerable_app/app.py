@@ -79,14 +79,14 @@ def withdraw():
     amount = data.get('amount')
     user_id = g.user['user_id'] if g.user else 1 # default to admin for testing
 
-    with balance_lock:
-        current_balance = users[user_id]['balance']
-        time.sleep(0.01) # Simulate processing time to widen the race window
-        if current_balance >= amount:
-            users[user_id]['balance'] -= amount
-            return jsonify({'message': 'Withdrawal successful', 'new_balance': users[user_id]['balance']})
-        else:
-            return jsonify({'error': 'Insufficient funds'}), 400
+    # INTENTIONALLY VULNERABLE: No lock to protect against race conditions
+    current_balance = users[user_id]['balance']
+    time.sleep(0.1) # Simulate processing time to widen the race window
+    if current_balance >= amount:
+        users[user_id]['balance'] -= amount
+        return jsonify({'message': 'Withdrawal successful', 'new_balance': users[user_id]['balance']})
+    else:
+        return jsonify({'error': 'Insufficient funds'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -1,16 +1,46 @@
 from flask import Flask, request, jsonify
-from .database import db, init_app, Finding
+from .database import db, init_app, Finding, Evidence
 from .algorithms import generate_canonical_finding, compute_confidence
+from .celery import init_celery
 
-app = Flask(__name__)
-init_app(app)
+def create_app(config_overrides=None):
+    app = Flask(__name__)
+    if config_overrides:
+        app.config.update(config_overrides)
+    init_app(app)
+    init_celery(app)
+    return app
 
-@app.route('/ingest', methods=['POST'])
-def ingest_finding():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid JSON"}), 400
+def register_routes(app):
+    @app.route('/ingest', methods=['POST'])
+    def ingest_finding():
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
 
+        process_finding.delay(data)
+        return jsonify({"status": "accepted"}), 202
+
+    @app.route('/findings', methods=['GET'])
+    def get_findings():
+        findings = Finding.query.all()
+        return jsonify([f.to_dict() for f in findings])
+
+    # Command to create DB tables
+    @app.cli.command("initdb")
+    def initdb_command():
+        """Creates the database tables."""
+        db.create_all()
+        print("Initialized the database.")
+
+from celery import Celery
+
+# This file is now primarily for defining routes and commands.
+# The app instance is created in app_factory.py
+celery = Celery(__name__)
+
+@celery.task
+def process_finding(data):
     # Process the finding
     finding_model = generate_canonical_finding(data)
 
@@ -29,18 +59,3 @@ def ingest_finding():
     # Add to the session and commit
     db.session.add(finding_model)
     db.session.commit()
-
-    return jsonify({"status": "created", "id": str(finding_model.id)}), 201
-
-@app.route('/findings', methods=['GET'])
-def get_findings():
-    findings = Finding.query.all()
-    return jsonify([f.to_dict() for f in findings])
-
-# Command to create DB tables
-@app.cli.command("initdb")
-def initdb_command():
-    """Creates the database tables."""
-    with app.app_context():
-        db.create_all()
-    print("Initialized the database.")
