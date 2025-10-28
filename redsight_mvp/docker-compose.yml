@@ -11,15 +11,16 @@ services:
   redis:
     image: redis:7
   web:
-    image: redsight/web:latest
-    build: ./web
-    depends_on: [postgres, redis]
+    build: ./api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
     environment:
-      DATABASE_URL: postgres://redsight:redsightpass@postgres:5432/redsight
+      DATABASE_URL: postgresql://redsight:redsightpass@postgres:5432/redsight
       REDIS_URL: redis://redis:6379
-  worker:
-    image: redsight/worker:latest
-    build: ./worker
-    depends_on: [postgres, redis]
+    volumes:
+      - ./api:/app
 volumes:
   pgdata:
