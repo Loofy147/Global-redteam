@@ -7,6 +7,7 @@ import json
 import time
 import hashlib
 import jwt
+import requests
 from typing import Dict, List, Any, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -58,13 +59,13 @@ class APISecurityTester:
         self.auth_token = auth_token
         self.results: List[APITestResult] = []
         self.request_history: List[Dict] = []
+        self.session = requests.Session()
     
     def _make_request(self, 
                       endpoint: APIEndpoint, 
                       override_headers: Optional[Dict] = None,
                       override_body: Optional[Dict] = None) -> Dict:
-        """Simulate HTTP request (in production, use requests library)"""
-        # This is a simulation - in real implementation use requests library
+        """Perform an HTTP request"""
         headers = endpoint.headers.copy()
         if override_headers:
             headers.update(override_headers)
@@ -73,23 +74,43 @@ class APISecurityTester:
             headers['Authorization'] = f'Bearer {self.auth_token}'
         
         body = override_body if override_body is not None else endpoint.body
+        url = f"{self.base_url}{endpoint.path}"
         
-        request = {
-            'url': f"{self.base_url}{endpoint.path}",
+        request_details = {
+            'url': url,
             'method': endpoint.method,
             'headers': headers,
-            'body': body,
+            'json': body,
             'timestamp': time.time()
         }
-        
-        self.request_history.append(request)
-        
-        # Simulated response - in real implementation, return actual HTTP response
-        return {
-            'status_code': 200,
-            'body': {'message': 'success'},
-            'headers': {'content-type': 'application/json'}
-        }
+        self.request_history.append(request_details)
+
+        try:
+            response = self.session.request(
+                method=endpoint.method,
+                url=url,
+                headers=headers,
+                json=body,
+                timeout=5
+            )
+
+            response_body = {}
+            try:
+                response_body = response.json()
+            except json.JSONDecodeError:
+                response_body = {'raw': response.text}
+
+            return {
+                'status_code': response.status_code,
+                'body': response_body,
+                'headers': dict(response.headers)
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                'status_code': 500,
+                'body': {'error': str(e)},
+                'headers': {}
+            }
     
     def test_bola_idor(self, endpoint: APIEndpoint, user_id_param: str) -> APITestResult:
         """
