@@ -205,13 +205,15 @@ class CoverageGuidedFuzzer:
     def __init__(self, 
                  target_function: Callable[[bytes], Any],
                  timeout: float = 1.0,
-                 max_iterations: int = 10000):
+                 max_iterations: int = 10000,
+                 mutation_strategies: Optional[List[MutationStrategy]] = None):
         self.target = target_function
         self.timeout = timeout
         self.max_iterations = max_iterations
         
         self.mutator = Mutator()
         self.coverage_tracker = CoverageTracker()
+        self.mutation_strategies = mutation_strategies or list(MutationStrategy)
         
         self.corpus: List[FuzzInput] = []
         self.crashes: List[CrashReport] = []
@@ -280,7 +282,7 @@ class CoverageGuidedFuzzer:
         parent = self.select_input_from_corpus()
         
         # Select mutation strategy
-        strategy = self.mutator.random.choice(list(MutationStrategy))
+        strategy = self.mutator.random.choice(self.mutation_strategies)
         if strategy == MutationStrategy.SPLICE and len(self.corpus) > 1:
             other = self.mutator.random.choice(self.corpus)
             mutated = self.mutator.splice_mutation(parent.data, other.data)

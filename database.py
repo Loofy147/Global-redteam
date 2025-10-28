@@ -27,7 +27,8 @@ def init_db():
                 remediation TEXT,
                 status TEXT NOT NULL DEFAULT 'new',
                 first_seen TIMESTAMP NOT NULL,
-                last_seen TIMESTAMP NOT NULL
+                last_seen TIMESTAMP NOT NULL,
+                is_regression BOOLEAN NOT NULL DEFAULT 0
             )
         """)
         conn.commit()
@@ -49,19 +50,19 @@ def save_finding(finding):
         existing_finding = cursor.fetchone()
 
         if existing_finding:
-            # It's a regression or still present
-            status = 'open' if existing_finding['status'] != 'new' else 'new'
+            is_regression = existing_finding['status'] == 'closed'
+            status = 'open'
             cursor.execute("""
                 UPDATE findings
-                SET last_seen = ?, status = ?
+                SET last_seen = ?, status = ?, is_regression = ?
                 WHERE finding_hash = ?
-            """, (now, status, finding_hash))
+            """, (now, status, is_regression, finding_hash))
             print(f"[!] Updated existing finding: {finding.title}")
         else:
             # It's a new finding
             cursor.execute("""
-                INSERT INTO findings (finding_hash, category, severity, title, description, affected_component, evidence, remediation, first_seen, last_seen, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
+                INSERT INTO findings (finding_hash, category, severity, title, description, affected_component, evidence, remediation, first_seen, last_seen, status, is_regression)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', 0)
             """, (
                 finding_hash,
                 finding.category.value,
@@ -77,17 +78,35 @@ def save_finding(finding):
             print(f"[!] Saved new finding: {finding.title}")
         conn.commit()
 
+def close_old_findings(run_start_time):
+    """Marks findings as 'closed' if they were not seen in the current run."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE findings
+            SET status = 'closed', is_regression = 0
+            WHERE last_seen < ? AND status != 'closed'
+        """, (run_start_time,))
+        conn.commit()
+        print(f"[+] Closed {cursor.rowcount} old findings.")
+
 def get_findings_summary():
     """Retrieves a summary of findings from the database."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT severity, status, COUNT(*) as count
+            SELECT severity, status, is_regression, COUNT(*) as count
             FROM findings
-            GROUP BY severity, status
+            GROUP BY severity, status, is_regression
         """)
-        summary = cursor.fetchall()
-        return {f"{row['severity']}_{row['status']}": row['count'] for row in summary}
+        summary_rows = cursor.fetchall()
+        summary = {}
+        for row in summary_rows:
+            key = f"{row['severity']}_{row['status']}"
+            if row['is_regression']:
+                key = f"{row['severity']}_regression"
+            summary[key] = row['count']
+        return summary
 
 def get_open_findings():
     """Retrieves all open or new findings from the database."""
@@ -95,6 +114,13 @@ def get_open_findings():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM findings WHERE status IN ('new', 'open') ORDER BY severity, last_seen DESC")
         return cursor.fetchall()
+
+def get_finding_by_hash(finding_hash):
+    """Retrieves a single finding by its hash."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM findings WHERE finding_hash = ?", (finding_hash,))
+        return cursor.fetchone()
 
 if __name__ == '__main__':
     # Initialize the database when the script is run directly
