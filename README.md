@@ -126,3 +126,16 @@ The orchestrator generates the following reports:
 *   `red_team_findings.json`: A detailed JSON report of all findings.
 *   `red_team_findings.csv`: A CSV export of all findings.
 *   `findings.db`: An SQLite database that stores historical findings to track regressions and trends over time.
+
+## Strategic Deliverables
+
+This repository also includes a `deliverables/` directory containing a suite of professional, actionable documents based on the framework's capabilities. These templates are designed to help security teams communicate risk and drive remediation.
+
+*   **Executive Summary:** A 1-page summary for management.
+*   **Security Roadmap:** A prioritized, actionable remediation plan.
+*   **PenTest Report Template:** A formal report template with sample findings.
+*   **Threat Model:** A detailed STRIDE threat model for the included vulnerable app.
+*   **IR Playbook:** A ready-to-use incident response playbook for web application compromises.
+*   **Red Team Checklist:** A practical checklist for conducting Red Team engagements.
+*   **CI/CD Automation Architecture:** A reference architecture for automating security testing.
+*   **Internal Tool MVP Proposal:** A proposal for building an internal SaaS security platform.

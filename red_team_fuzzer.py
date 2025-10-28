@@ -282,8 +282,13 @@ class CoverageGuidedFuzzer:
         parent = self.select_input_from_corpus()
         
         # Select mutation strategy
-        strategy = self.mutator.random.choice(self.mutation_strategies)
-        if strategy == MutationStrategy.SPLICE and len(self.corpus) > 1:
+        available_strategies = self.mutation_strategies.copy()
+        if len(self.corpus) < 2 and MutationStrategy.SPLICE in available_strategies:
+            available_strategies.remove(MutationStrategy.SPLICE)
+
+        strategy = self.mutator.random.choice(available_strategies)
+
+        if strategy == MutationStrategy.SPLICE:
             other = self.mutator.random.choice(self.corpus)
             mutated = self.mutator.splice_mutation(parent.data, other.data)
         else:
