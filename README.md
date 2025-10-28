@@ -69,6 +69,36 @@ python3 red_team_orchestrator.py --suites api fuzz
 python3 red_team_orchestrator.py --api-url https://my-api.com --auth-token my-secret-token
 ```
 
+## Running the Vulnerable App (for testing)
+
+A vulnerable Flask application is included for testing the framework.
+
+1.  Install the app's dependencies:
+    ```bash
+    pip install -r vulnerable_app/requirements.txt
+    ```
+
+2.  Run the app:
+    ```bash
+    python3 vulnerable_app/app.py
+    ```
+
+The app will be available at `http://localhost:5000`.
+
+## Testing the Framework
+
+The framework includes a suite of unit and integration tests.
+
+1.  Install the testing dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  Run the tests:
+    ```bash
+    pytest
+    ```
+
 ## Reports
 
 The orchestrator generates the following reports:
