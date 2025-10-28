@@ -426,11 +426,120 @@ class RedTeamOrchestrator:
         print(f"[+] CSV exported to {filepath}")
 
 
+def run_api_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the API security test suite"""
+    api_tester = APISecurityTester(base_url=config['api_url'], auth_token=config['auth_token'])
+    endpoints = [
+        APIEndpoint(path="/api/users/{id}", method="GET"),
+        APIEndpoint(path="/api/users", method="POST", body={'username': 'test', 'email': 'test@example.com'}),
+        APIEndpoint(path="/api/admin/users", method="GET"),
+        APIEndpoint(path="/api/search", method="GET", requires_auth=False)
+    ]
+    results = api_tester.test_comprehensive(endpoints)
+    for result in results:
+        if not result.passed:
+            finding = Finding(
+                id=f"API-{result.vulnerability_type.value}",
+                category=TestCategory.API_SECURITY,
+                severity=Severity(result.severity),
+                title=f"API Vulnerability: {result.vulnerability_type.value}",
+                description=result.details,
+                affected_component=f"{result.endpoint.method} {result.endpoint.path}",
+                evidence=result.evidence,
+                remediation=result.remediation
+            )
+            orchestrator.add_finding(finding)
+    return not any(not r.passed for r in results)
+
+def run_fuzz_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the fuzz testing suite"""
+    def vulnerable_parser(data: bytes):
+        if b"CRASH" in data:
+            raise ValueError("Fuzzer found a crash!")
+    fuzzer = CoverageGuidedFuzzer(target_function=vulnerable_parser, max_iterations=1000)
+    fuzzer.add_seed(b"some initial data")
+    fuzzer.run()
+    if fuzzer.crashes:
+        for crash in fuzzer.crashes:
+            finding = Finding(
+                id=f"FUZZ-{hashlib.sha1(crash.input_data).hexdigest()}",
+                category=TestCategory.FUZZING,
+                severity=Severity.HIGH,
+                title="Fuzzer discovered a crash",
+                description=str(crash.exception),
+                affected_component="vulnerable_parser",
+                evidence=crash.input_data.hex(),
+                remediation="Investigate crash and fix the underlying bug."
+            )
+            orchestrator.add_finding(finding)
+        return False
+    return True
+
+def run_property_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the property-based testing suite"""
+    property_tester = PropertyTester(iterations=100)
+    def vulnerable_sql_query(user_input: str):
+        if "'" in user_input:
+            return "SQL error"
+        return "OK"
+    property_tester.test_injection_resistance(vulnerable_sql_query)
+    if property_tester.failures:
+        for failure in property_tester.failures:
+            finding = Finding(
+                id=f"PROP-{failure.vulnerability_type.value}",
+                category=TestCategory.PROPERTY_BASED,
+                severity=Severity.HIGH,
+                title=f"Property test failed: {failure.vulnerability_type.value}",
+                description=f"Input: {failure.input_value}, Output: {failure.output_value}",
+                affected_component="vulnerable_sql_query",
+                evidence=failure.input_value,
+                remediation="Fix the code to satisfy the tested property."
+            )
+            orchestrator.add_finding(finding)
+        return False
+    return True
+
+def run_race_condition_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the race condition detection suite"""
+    race_detector = RaceConditionDetector(threads=50)
+    class Counter:
+        def __init__(self):
+            self.value = 0
+        def increment(self):
+            current = self.value
+            time.sleep(0.0001)
+            self.value = current + 1
+    counter = Counter()
+    result = race_detector.test_concurrent_execution(counter.increment)
+    if result.is_vulnerable:
+        finding = Finding(
+            id="RACE-CONCURRENT-EXEC",
+            category=TestCategory.RACE_CONDITIONS,
+            severity=Severity(result.severity),
+            title="Race condition detected in concurrent execution",
+            description=result.details,
+            affected_component="Counter.increment",
+            evidence=f"{result.unique_outcomes} unique outcomes",
+            remediation="Use locks or other synchronization primitives."
+        )
+        orchestrator.add_finding(finding)
+        return False
+    return True
+
+
 if __name__ == "__main__":
+
+    config = {}
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        pass
+
     parser = argparse.ArgumentParser(description="Red Team Orchestrator")
-    parser.add_argument("--target", type=str, default="Production API v2.0", help="Target system for assessment")
-    parser.add_argument("--api-url", type=str, default="https://api.example.com", help="Base URL for API testing")
-    parser.add_argument("--auth-token", type=str, default="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test", help="Auth token for API testing")
+    parser.add_argument("--target", type=str, default=config.get('target_system', "Production API v2.0"), help="Target system for assessment")
+    parser.add_argument("--api-url", type=str, default=config.get('api_url', "https://api.example.com"), help="Base URL for API testing")
+    parser.add_argument("--auth-token", type=str, default=config.get('auth_token', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test"), help="Auth token for API testing")
     parser.add_argument("--suites", nargs='+', default=['all'], help="Test suites to run (api, fuzz, property, race, all)")
     
     args = parser.parse_args()
@@ -438,119 +547,19 @@ if __name__ == "__main__":
     orchestrator = RedTeamOrchestrator(
         target_system=args.target,
         config={
-            'max_threads': 100,
-            'timeout': 5.0,
-            'verbose': True,
+            'max_threads': config.get('max_threads', 100),
+            'timeout': config.get('timeout', 5.0),
+            'verbose': config.get('verbose', True),
             'api_url': args.api_url,
             'auth_token': args.auth_token
         }
     )
 
-    def run_api_tests():
-        """Run the API security test suite"""
-        api_tester = APISecurityTester(base_url=orchestrator.config['api_url'], auth_token=orchestrator.config['auth_token'])
-        endpoints = [
-            APIEndpoint(path="/api/users/{id}", method="GET"),
-            APIEndpoint(path="/api/users", method="POST", body={'username': 'test', 'email': 'test@example.com'}),
-            APIEndpoint(path="/api/admin/users", method="GET"),
-            APIEndpoint(path="/api/search", method="GET", requires_auth=False)
-        ]
-        results = api_tester.test_comprehensive(endpoints)
-        for result in results:
-            if not result.passed:
-                finding = Finding(
-                    id=f"API-{result.vulnerability_type.value}",
-                    category=TestCategory.API_SECURITY,
-                    severity=Severity(result.severity),
-                    title=f"API Vulnerability: {result.vulnerability_type.value}",
-                    description=result.details,
-                    affected_component=f"{result.endpoint.method} {result.endpoint.path}",
-                    evidence=result.evidence,
-                    remediation=result.remediation
-                )
-                orchestrator.add_finding(finding)
-        return not any(not r.passed for r in results)
-
-    def run_fuzz_tests():
-        """Run the fuzz testing suite"""
-        def vulnerable_parser(data: bytes):
-            if b"CRASH" in data:
-                raise ValueError("Fuzzer found a crash!")
-        fuzzer = CoverageGuidedFuzzer(target_function=vulnerable_parser, max_iterations=1000)
-        fuzzer.add_seed(b"some initial data")
-        fuzzer.run()
-        if fuzzer.crashes:
-            for crash in fuzzer.crashes:
-                finding = Finding(
-                    id=f"FUZZ-{hashlib.sha1(crash.input_data).hexdigest()}",
-                    category=TestCategory.FUZZING,
-                    severity=Severity.HIGH,
-                    title="Fuzzer discovered a crash",
-                    description=str(crash.exception),
-                    affected_component="vulnerable_parser",
-                    evidence=crash.input_data.hex(),
-                    remediation="Investigate crash and fix the underlying bug."
-                )
-                orchestrator.add_finding(finding)
-            return False
-        return True
-
-    def run_property_tests():
-        """Run the property-based testing suite"""
-        property_tester = PropertyTester(iterations=100)
-        def vulnerable_sql_query(user_input: str):
-            if "'" in user_input:
-                return "SQL error"
-            return "OK"
-        property_tester.test_injection_resistance(vulnerable_sql_query)
-        if property_tester.failures:
-            for failure in property_tester.failures:
-                finding = Finding(
-                    id=f"PROP-{failure.vulnerability_type.value}",
-                    category=TestCategory.PROPERTY_BASED,
-                    severity=Severity.HIGH,
-                    title=f"Property test failed: {failure.vulnerability_type.value}",
-                    description=f"Input: {failure.input_value}, Output: {failure.output_value}",
-                    affected_component="vulnerable_sql_query",
-                    evidence=failure.input_value,
-                    remediation="Fix the code to satisfy the tested property."
-                )
-                orchestrator.add_finding(finding)
-            return False
-        return True
-
-    def run_race_condition_tests():
-        """Run the race condition detection suite"""
-        race_detector = RaceConditionDetector(threads=50)
-        class Counter:
-            def __init__(self):
-                self.value = 0
-            def increment(self):
-                current = self.value
-                time.sleep(0.0001)
-                self.value = current + 1
-        counter = Counter()
-        result = race_detector.test_concurrent_execution(counter.increment)
-        if result.is_vulnerable:
-            finding = Finding(
-                id="RACE-CONCURRENT-EXEC",
-                category=TestCategory.RACE_CONDITIONS,
-                severity=Severity(result.severity),
-                title="Race condition detected in concurrent execution",
-                description=result.details,
-                affected_component="Counter.increment",
-                evidence=f"{result.unique_outcomes} unique outcomes",
-                remediation="Use locks or other synchronization primitives."
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-
     suites = {
-        'api': TestSuite(name="API Security", category=TestCategory.API_SECURITY, tests=[run_api_tests], description="Comprehensive API security testing."),
-        'fuzz': TestSuite(name="Fuzz Testing", category=TestCategory.FUZZING, tests=[run_fuzz_tests], description="Coverage-guided fuzzing of vulnerable functions."),
-        'property': TestSuite(name="Property-Based Testing", category=TestCategory.PROPERTY_BASED, tests=[run_property_tests], description="Adversarial property-based testing."),
-        'race': TestSuite(name="Race Condition Detection", category=TestCategory.RACE_CONDITIONS, tests=[run_race_condition_tests], description="Detecting concurrency vulnerabilities.")
+        'api': TestSuite(name="API Security", category=TestCategory.API_SECURITY, tests=[lambda: run_api_tests(orchestrator, orchestrator.config)], description="Comprehensive API security testing."),
+        'fuzz': TestSuite(name="Fuzz Testing", category=TestCategory.FUZZING, tests=[lambda: run_fuzz_tests(orchestrator, orchestrator.config)], description="Coverage-guided fuzzing of vulnerable functions."),
+        'property': TestSuite(name="Property-Based Testing", category=TestCategory.PROPERTY_BASED, tests=[lambda: run_property_tests(orchestrator, orchestrator.config)], description="Adversarial property-based testing."),
+        'race': TestSuite(name="Race Condition Detection", category=TestCategory.RACE_CONDITIONS, tests=[lambda: run_race_condition_tests(orchestrator, orchestrator.config)], description="Detecting concurrency vulnerabilities.")
     }
 
     suites_to_run = args.suites
