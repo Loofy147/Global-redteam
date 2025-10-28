@@ -38,7 +38,18 @@ The framework is a suite of advanced security testing tools designed to be orche
     cp config.json.example config.json
     ```
 
-2.  Edit `config.json` to match your target environment. At a minimum, you should set the `api_url` and `auth_token`.
+2.  Edit `config.json` to match your target environment.
+
+    *   `api_url`: The base URL of the target API.
+    *   `auth_token`: An authentication token for accessing protected endpoints.
+    *   `swagger_file`: Path to a Swagger/OpenAPI file for API endpoint discovery.
+    *   `fuzzing`: Configuration for the fuzz testing suite.
+        *   `enabled`: Enable or disable the fuzzing suite.
+        *   `target_function`: The name of the function to fuzz.
+        *   `max_iterations`: The number of fuzzing iterations to run.
+        *   `timeout`: The timeout in seconds for each fuzzing run.
+        *   `seeds`: A list of initial seed inputs for the fuzzer.
+        *   `mutation_strategies`: A list of mutation strategies to use.
 
 ### Usage
 
@@ -111,6 +122,7 @@ The framework includes a suite of unit and integration tests.
 
 The orchestrator generates the following reports:
 
-*   **Console Output:** Executive and technical summaries are printed to the console.
+*   **Console Output:** Executive and technical summaries are printed to the console. The technical summary now includes historical context, identifying findings as `New`, `Ongoing`, or `Regression`.
 *   `red_team_findings.json`: A detailed JSON report of all findings.
 *   `red_team_findings.csv`: A CSV export of all findings.
+*   `findings.db`: An SQLite database that stores historical findings to track regressions and trends over time.

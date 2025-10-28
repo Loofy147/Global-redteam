@@ -507,6 +507,29 @@ class APISecurityTester:
         
         return self.results
     
+    def discover_endpoints_from_swagger(self, swagger_file: str) -> List[APIEndpoint]:
+        """Parses a Swagger/OpenAPI file to discover endpoints."""
+        endpoints = []
+        try:
+            with open(swagger_file, 'r') as f:
+                swagger_data = json.load(f)
+
+            for path, path_item in swagger_data.get('paths', {}).items():
+                for method, operation in path_item.items():
+                    # A basic check for auth, can be improved
+                    requires_auth = 'security' in operation or 'Authorization' in str(operation)
+
+                    endpoint = APIEndpoint(
+                        path=path,
+                        method=method.upper(),
+                        requires_auth=requires_auth
+                    )
+                    endpoints.append(endpoint)
+            print(f"[*] Discovered {len(endpoints)} endpoints from {swagger_file}")
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"[!] Error parsing Swagger file: {e}")
+        return endpoints
+
     def generate_report(self) -> str:
         """Generate comprehensive security report"""
         report = []

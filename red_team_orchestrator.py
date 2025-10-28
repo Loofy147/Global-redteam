@@ -117,10 +117,15 @@ class RedTeamOrchestrator:
     def run_api_tests(self):
         """Run the API security test suite"""
         api_tester = APISecurityTester(base_url=self.config['api_url'], auth_token=self.config['auth_token'])
-        endpoints = [
-            APIEndpoint(path="/api/users/2", method="GET"),
-            APIEndpoint(path="/api/admin/users", method="GET"),
-        ]
+
+        if self.config.get('swagger_file'):
+            endpoints = api_tester.discover_endpoints_from_swagger(self.config['swagger_file'])
+        else:
+            endpoints = [
+                APIEndpoint(path="/api/users/2", method="GET"),
+                APIEndpoint(path="/api/admin/users", method="GET"),
+            ]
+
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
             self.add_finding_from_result(result, TestCategory.API_SECURITY)
@@ -128,12 +133,34 @@ class RedTeamOrchestrator:
 
     def run_fuzz_tests(self):
         """Run the fuzz testing suite"""
+        fuzz_config = self.config.get('fuzzing', {})
+        target_function_name = fuzz_config.get('target_function', 'vulnerable_parser')
+
+        # Simple mapping of target function names to actual functions
+        # In a real-world scenario, this might involve dynamic imports
         def vulnerable_parser(data: bytes):
             if b"CRASH" in data:
                 raise ValueError("Fuzzer found a crash!")
-        fuzzer = CoverageGuidedFuzzer(target_function=vulnerable_parser, max_iterations=100)
-        fuzzer.add_seed(b"some initial data")
+
+        target_functions = {
+            'vulnerable_parser': vulnerable_parser
+        }
+
+        if target_function_name not in target_functions:
+            print(f"[!] Fuzzing target function '{target_function_name}' not found. Skipping.")
+            return True
+
+        fuzzer = CoverageGuidedFuzzer(
+            target_function=target_functions[target_function_name],
+            max_iterations=fuzz_config.get('max_iterations', 1000),
+            timeout=fuzz_config.get('timeout', 1.0)
+        )
+
+        for seed in fuzz_config.get('seeds', ['some initial data']):
+            fuzzer.add_seed(seed.encode())
+
         fuzzer.run()
+
         if fuzzer.crashes:
             for crash in fuzzer.crashes:
                 finding = Finding(
@@ -142,7 +169,7 @@ class RedTeamOrchestrator:
                     severity=Severity.HIGH,
                     title="Fuzzer discovered a crash",
                     description=str(crash.exception),
-                    affected_component="vulnerable_parser",
+                    affected_component=target_function_name,
                     evidence=crash.input_data.hex(),
                     remediation="Investigate crash and fix the underlying bug."
                 )
@@ -282,6 +309,8 @@ class RedTeamOrchestrator:
         
         self.stats['end_time'] = datetime.now()
         
+        db.close_old_findings(self.stats['start_time'])
+
         print("\n" + "=" * 80)
         print("Assessment Complete")
         print("=" * 80)
@@ -296,7 +325,13 @@ class RedTeamOrchestrator:
         print(f"  Passed: {self.stats['tests_passed']}")
         print(f"  Failed: {self.stats['tests_failed']}")
         
+        summary = db.get_findings_summary()
+        new_findings = summary.get('critical_new', 0) + summary.get('high_new', 0) + summary.get('medium_new', 0) + summary.get('low_new', 0)
+        regressions = summary.get('critical_regression', 0) + summary.get('high_regression', 0) + summary.get('medium_regression', 0) + summary.get('low_regression', 0)
+
         print(f"\nFindings: {len(self.findings)}")
+        print(f"  New: {new_findings}")
+        print(f"  Regressions: {regressions}")
         print(f"  Critical: {self.stats['critical_findings']}")
         print(f"  High: {self.stats['high_findings']}")
         print(f"  Medium: {self.stats['medium_findings']}")
@@ -386,11 +421,13 @@ class RedTeamOrchestrator:
         highs = summary.get('high_open', 0) + summary.get('high_new', 0)
         mediums = summary.get('medium_open', 0) + summary.get('medium_new', 0)
         lows = summary.get('low_open', 0) + summary.get('low_new', 0)
+        regressions = sum(v for k, v in summary.items() if 'regression' in k)
 
         print(f"  Critical: {criticals}")
         print(f"  High:     {highs}")
         print(f"  Medium:   {mediums}")
         print(f"  Low:      {lows}")
+        print(f"  Regressions: {regressions}")
         print("-" * 30)
         print(f"  Total:    {criticals + highs + mediums + lows}")
 
@@ -399,7 +436,8 @@ class RedTeamOrchestrator:
             print("  No open findings. Great job!")
         else:
             for finding in open_findings[:10]: # Display top 10
-                print(f"  - [{finding['severity'].upper()}] {finding['title']} (Last Seen: {finding['last_seen']})")
+                status = "REGRESSION" if finding['is_regression'] else finding['status'].upper()
+                print(f"  - [{finding['severity'].upper()}] [{status}] {finding['title']} (Last Seen: {finding['last_seen']})")
 
         print("\n" + "=" * 80)
 
@@ -433,7 +471,15 @@ class RedTeamOrchestrator:
                 report.append("   " + "-" * 76)
                 
                 for i, finding in enumerate(findings, 1):
-                    report.append(f"\n   Finding #{i}: {finding.title}")
+                    db_finding = db.get_finding_by_hash(db.generate_finding_hash(finding))
+                    status = "New"
+                    if db_finding:
+                        if db_finding['is_regression']:
+                            status = f"Regression (First seen: {db_finding['first_seen']})"
+                        elif db_finding['status'] == 'open':
+                            status = f"Ongoing (First seen: {db_finding['first_seen']})"
+
+                    report.append(f"\n   Finding #{i}: {finding.title} [{status}]")
                     report.append(f"   ID: {finding.id}")
                     report.append(f"   Category: {finding.category.value}")
                     report.append(f"   Component: {finding.affected_component}")
@@ -579,6 +625,7 @@ if __name__ == "__main__":
     parser.add_argument("--auth-token", type=str, default=config.get('auth_token', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test"), help="Auth token for API testing")
     parser.add_argument("--suites", nargs='+', default=None, help="Test suites to run (api, fuzz, property, race, all)")
     parser.add_argument("--dashboard", action="store_true", help="Display the security dashboard")
+    parser.add_argument("--swagger", type=str, default=config.get('swagger_file'), help="Path to Swagger/OpenAPI file for API discovery")
 
     args = parser.parse_args()
 
@@ -589,7 +636,8 @@ if __name__ == "__main__":
             'timeout': config.get('timeout', 5.0),
             'verbose': config.get('verbose', True),
             'api_url': args.api_url,
-            'auth_token': args.auth_token
+            'auth_token': args.auth_token,
+            'swagger_file': args.swagger
         }
     )
 

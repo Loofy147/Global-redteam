@@ -40,6 +40,8 @@ def test_integration(vulnerable_app):
             APIEndpoint(path="/api/users/2", method="GET"),
             APIEndpoint(path="/api/admin/users", method="GET"),
         ]
+        api_tester = APISecurityTester(base_url=orchestrator.config['api_url'], auth_token=orchestrator.config['auth_token'])
+        endpoints = api_tester.discover_endpoints_from_swagger("vulnerable_app/swagger.json")
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
             if not result.passed:
@@ -51,6 +53,16 @@ def test_integration(vulnerable_app):
         TestCategory.API_SECURITY,
         [run_api_tests],
         "Integration test for API security"
+    )
+
+    def run_fuzz_tests():
+        return orchestrator.run_fuzz_tests()
+
+    orchestrator.register_test_suite(
+        "Fuzz Testing",
+        TestCategory.FUZZING,
+        [run_fuzz_tests],
+        "Integration test for fuzzing"
     )
 
     orchestrator.execute_all_tests()
