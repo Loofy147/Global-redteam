@@ -1,0 +1,23 @@
+name: re-test-finding
+on:
+  workflow_dispatch:
+    inputs:
+      finding_id:
+        required: true
+jobs:
+  run_retest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+      - name: Run small scanner (example)
+        run: |
+          # run lightweight scanner against deployed review app or unit tests
+          npm ci
+          npm run test:security -- --finding ${{ github.event.inputs.finding_id }}
+      - name: Report results back to RedSight
+        run: |
+          curl -X POST -H "Authorization: Bearer ${{ secrets.REDSIGHT_API_KEY }}" \
+           -H "Content-Type: application/json" \
+           -d '{"finding_id":"${{ github.event.inputs.finding_id}}","result":"PASS"}' \
+           https://redsight.internal/api/retest/callback
