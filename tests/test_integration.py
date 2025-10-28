@@ -12,6 +12,11 @@ from red_team_race_detector import RaceConditionDetector
 @pytest.fixture(scope="module")
 def vulnerable_app():
     """Starts the vulnerable Flask app as a background process"""
+    db_file = "findings.db"
+    if os.path.exists(db_file):
+        os.remove(db_file)
+    init_db_process = subprocess.Popen(["python3", "database.py"])
+    init_db_process.wait()
     app_process = subprocess.Popen(["python3", "vulnerable_app/app.py"])
     time.sleep(2)  # Give the app time to start
     yield "http://localhost:5000"
@@ -38,7 +43,7 @@ def test_integration(vulnerable_app):
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
             if not result.passed:
-                finding = orchestrator.add_finding_from_result(result)
+                orchestrator.add_finding_from_result(result, TestCategory.API_SECURITY)
         return not any(not r.passed for r in results)
 
     orchestrator.register_test_suite(

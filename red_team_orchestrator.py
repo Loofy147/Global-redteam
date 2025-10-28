@@ -7,6 +7,7 @@ import json
 import time
 import hashlib
 import argparse
+import database as db
 from red_team_api_tester import APISecurityTester, APIEndpoint
 from red_team_fuzzer import CoverageGuidedFuzzer
 from red_team_property_testing import PropertyTester
@@ -98,12 +99,12 @@ class RedTeamOrchestrator:
         self.test_suites.append(suite)
         print(f"[+] Registered test suite: {suite.name} ({len(suite.tests)} tests)")
 
-    def add_finding_from_result(self, result):
+    def add_finding_from_result(self, result, category):
         """Add a finding from a test result object"""
         if not result.passed:
             finding = Finding(
                 id=f"{result.vulnerability_type.value}-{hashlib.sha1(str(result.evidence).encode()).hexdigest()[:10]}",
-                category=TestCategory.API_SECURITY, #  This should be dynamic
+                category=category,
                 severity=Severity(result.severity),
                 title=f"Vulnerability: {result.vulnerability_type.value}",
                 description=result.details,
@@ -122,7 +123,7 @@ class RedTeamOrchestrator:
         ]
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
-            self.add_finding_from_result(result)
+            self.add_finding_from_result(result, TestCategory.API_SECURITY)
         return not any(not r.passed for r in results)
 
     def run_fuzz_tests(self):
@@ -203,6 +204,7 @@ class RedTeamOrchestrator:
     def add_finding(self, finding: Finding):
         """Add a security finding"""
         self.findings.append(finding)
+        db.save_finding(finding)
         
         # Update statistics
         if finding.severity == Severity.CRITICAL:
@@ -370,6 +372,37 @@ class RedTeamOrchestrator:
         summary.append("\n" + "=" * 80)
         return "\n".join(summary)
     
+    def display_dashboard(self):
+        """Displays a security dashboard in the console."""
+        summary = db.get_findings_summary()
+        open_findings = db.get_open_findings()
+
+        print("=" * 80)
+        print("SECURITY DASHBOARD")
+        print("=" * 80)
+
+        print("\n--- Open Findings by Severity ---")
+        criticals = summary.get('critical_open', 0) + summary.get('critical_new', 0)
+        highs = summary.get('high_open', 0) + summary.get('high_new', 0)
+        mediums = summary.get('medium_open', 0) + summary.get('medium_new', 0)
+        lows = summary.get('low_open', 0) + summary.get('low_new', 0)
+
+        print(f"  Critical: {criticals}")
+        print(f"  High:     {highs}")
+        print(f"  Medium:   {mediums}")
+        print(f"  Low:      {lows}")
+        print("-" * 30)
+        print(f"  Total:    {criticals + highs + mediums + lows}")
+
+        print("\n--- Recent Open Findings ---")
+        if not open_findings:
+            print("  No open findings. Great job!")
+        else:
+            for finding in open_findings[:10]: # Display top 10
+                print(f"  - [{finding['severity'].upper()}] {finding['title']} (Last Seen: {finding['last_seen']})")
+
+        print("\n" + "=" * 80)
+
     def generate_technical_report(self) -> str:
         """Generate detailed technical report"""
         report = []
@@ -544,7 +577,8 @@ if __name__ == "__main__":
     parser.add_argument("--target", type=str, default=config.get('target_system', "Production API v2.0"), help="Target system for assessment")
     parser.add_argument("--api-url", type=str, default=config.get('api_url', "https://api.example.com"), help="Base URL for API testing")
     parser.add_argument("--auth-token", type=str, default=config.get('auth_token', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test"), help="Auth token for API testing")
-    parser.add_argument("--suites", nargs='+', default=['all'], help="Test suites to run (api, fuzz, property, race, all)")
+    parser.add_argument("--suites", nargs='+', default=None, help="Test suites to run (api, fuzz, property, race, all)")
+    parser.add_argument("--dashboard", action="store_true", help="Display the security dashboard")
 
     args = parser.parse_args()
 
@@ -566,19 +600,24 @@ if __name__ == "__main__":
         'race': (TestCategory.RACE_CONDITIONS, [orchestrator.run_race_condition_tests], "Detecting concurrency vulnerabilities.")
     }
 
-    suites_to_run = args.suites
-    if 'all' in suites_to_run:
-        suites_to_run = suites.keys()
+    if args.dashboard:
+        orchestrator.display_dashboard()
+    elif args.suites:
+        suites_to_run = args.suites
+        if 'all' in suites_to_run:
+            suites_to_run = suites.keys()
 
-    for suite_name in suites_to_run:
-        if suite_name in suites:
-            category, tests, description = suites[suite_name]
-            orchestrator.register_test_suite(suite_name, category, tests, description)
-    
-    orchestrator.execute_all_tests()
-    
-    print("\n" + orchestrator.generate_executive_summary())
-    print("\n" + orchestrator.generate_technical_report())
-    
-    orchestrator.export_json("red_team_findings.json")
-    orchestrator.export_csv("red_team_findings.csv")
+        for suite_name in suites_to_run:
+            if suite_name in suites:
+                category, tests, description = suites[suite_name]
+                orchestrator.register_test_suite(suite_name, category, tests, description)
+
+        orchestrator.execute_all_tests()
+
+        print("\n" + orchestrator.generate_executive_summary())
+        print("\n" + orchestrator.generate_technical_report())
+
+        orchestrator.export_json("red_team_findings.json")
+        orchestrator.export_csv("red_team_findings.csv")
+    else:
+        parser.print_help()

@@ -8,8 +8,8 @@ app.config['SECRET_KEY'] = 'your-secret-key'
 
 # --- In-memory database ---
 users = {
-    1: {'username': 'admin', 'password': 'password', 'is_admin': True, 'balance': 1000},
-    2: {'username': 'user', 'password': 'password', 'is_admin': False, 'balance': 500}
+    1: {'user_id': 1, 'username': 'admin', 'password': 'password', 'is_admin': True, 'balance': 1000},
+    2: {'user_id': 2, 'username': 'user', 'password': 'password', 'is_admin': False, 'balance': 500}
 }
 next_user_id = 3
 balance_lock = threading.Lock()
@@ -77,7 +77,7 @@ def withdraw():
     """Vulnerable to a race condition (double-spending)"""
     data = request.get_json()
     amount = data.get('amount')
-    user_id = g.user['id'] if g.user else 1 # default to admin for testing
+    user_id = g.user['user_id'] if g.user else 1 # default to admin for testing
 
     with balance_lock:
         current_balance = users[user_id]['balance']

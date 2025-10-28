@@ -69,6 +69,14 @@ python3 red_team_orchestrator.py --suites api fuzz
 python3 red_team_orchestrator.py --api-url https://my-api.com --auth-token my-secret-token
 ```
 
+**Display the Security Dashboard:**
+
+To view a summary of the current security posture, use the `--dashboard` flag.
+
+```bash
+python3 red_team_orchestrator.py --dashboard
+```
+
 ## Running the Vulnerable App (for testing)
 
 A vulnerable Flask application is included for testing the framework.
