@@ -6,6 +6,11 @@ Integrates all testing methodologies into a unified platform
 import json
 import time
 import hashlib
+import argparse
+from red_team_api_tester import APISecurityTester, APIEndpoint
+from red_team_fuzzer import CoverageGuidedFuzzer
+from red_team_property_testing import PropertyTester
+from red_team_race_detector import RaceConditionDetector
 from typing import Dict, List, Any, Callable, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -421,320 +426,154 @@ class RedTeamOrchestrator:
         print(f"[+] CSV exported to {filepath}")
 
 
-# Example comprehensive red team assessment
+def run_api_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the API security test suite"""
+    api_tester = APISecurityTester(base_url=config['api_url'], auth_token=config['auth_token'])
+    endpoints = [
+        APIEndpoint(path="/api/users/{id}", method="GET"),
+        APIEndpoint(path="/api/users", method="POST", body={'username': 'test', 'email': 'test@example.com'}),
+        APIEndpoint(path="/api/admin/users", method="GET"),
+        APIEndpoint(path="/api/search", method="GET", requires_auth=False)
+    ]
+    results = api_tester.test_comprehensive(endpoints)
+    for result in results:
+        if not result.passed:
+            finding = Finding(
+                id=f"API-{result.vulnerability_type.value}",
+                category=TestCategory.API_SECURITY,
+                severity=Severity(result.severity),
+                title=f"API Vulnerability: {result.vulnerability_type.value}",
+                description=result.details,
+                affected_component=f"{result.endpoint.method} {result.endpoint.path}",
+                evidence=result.evidence,
+                remediation=result.remediation
+            )
+            orchestrator.add_finding(finding)
+    return not any(not r.passed for r in results)
+
+def run_fuzz_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the fuzz testing suite"""
+    def vulnerable_parser(data: bytes):
+        if b"CRASH" in data:
+            raise ValueError("Fuzzer found a crash!")
+    fuzzer = CoverageGuidedFuzzer(target_function=vulnerable_parser, max_iterations=1000)
+    fuzzer.add_seed(b"some initial data")
+    fuzzer.run()
+    if fuzzer.crashes:
+        for crash in fuzzer.crashes:
+            finding = Finding(
+                id=f"FUZZ-{hashlib.sha1(crash.input_data).hexdigest()}",
+                category=TestCategory.FUZZING,
+                severity=Severity.HIGH,
+                title="Fuzzer discovered a crash",
+                description=str(crash.exception),
+                affected_component="vulnerable_parser",
+                evidence=crash.input_data.hex(),
+                remediation="Investigate crash and fix the underlying bug."
+            )
+            orchestrator.add_finding(finding)
+        return False
+    return True
+
+def run_property_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the property-based testing suite"""
+    property_tester = PropertyTester(iterations=100)
+    def vulnerable_sql_query(user_input: str):
+        if "'" in user_input:
+            return "SQL error"
+        return "OK"
+    property_tester.test_injection_resistance(vulnerable_sql_query)
+    if property_tester.failures:
+        for failure in property_tester.failures:
+            finding = Finding(
+                id=f"PROP-{failure.vulnerability_type.value}",
+                category=TestCategory.PROPERTY_BASED,
+                severity=Severity.HIGH,
+                title=f"Property test failed: {failure.vulnerability_type.value}",
+                description=f"Input: {failure.input_value}, Output: {failure.output_value}",
+                affected_component="vulnerable_sql_query",
+                evidence=failure.input_value,
+                remediation="Fix the code to satisfy the tested property."
+            )
+            orchestrator.add_finding(finding)
+        return False
+    return True
+
+def run_race_condition_tests(orchestrator: RedTeamOrchestrator, config: Dict):
+    """Run the race condition detection suite"""
+    race_detector = RaceConditionDetector(threads=50)
+    class Counter:
+        def __init__(self):
+            self.value = 0
+        def increment(self):
+            current = self.value
+            time.sleep(0.0001)
+            self.value = current + 1
+    counter = Counter()
+    result = race_detector.test_concurrent_execution(counter.increment)
+    if result.is_vulnerable:
+        finding = Finding(
+            id="RACE-CONCURRENT-EXEC",
+            category=TestCategory.RACE_CONDITIONS,
+            severity=Severity(result.severity),
+            title="Race condition detected in concurrent execution",
+            description=result.details,
+            affected_component="Counter.increment",
+            evidence=f"{result.unique_outcomes} unique outcomes",
+            remediation="Use locks or other synchronization primitives."
+        )
+        orchestrator.add_finding(finding)
+        return False
+    return True
+
+
 if __name__ == "__main__":
+
+    config = {}
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        pass
+
+    parser = argparse.ArgumentParser(description="Red Team Orchestrator")
+    parser.add_argument("--target", type=str, default=config.get('target_system', "Production API v2.0"), help="Target system for assessment")
+    parser.add_argument("--api-url", type=str, default=config.get('api_url', "https://api.example.com"), help="Base URL for API testing")
+    parser.add_argument("--auth-token", type=str, default=config.get('auth_token', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test"), help="Auth token for API testing")
+    parser.add_argument("--suites", nargs='+', default=['all'], help="Test suites to run (api, fuzz, property, race, all)")
     
-    # Initialize orchestrator
+    args = parser.parse_args()
+
     orchestrator = RedTeamOrchestrator(
-        target_system="Production API v2.0",
+        target_system=args.target,
         config={
-            'max_threads': 100,
-            'timeout': 5.0,
-            'verbose': True
+            'max_threads': config.get('max_threads', 100),
+            'timeout': config.get('timeout', 5.0),
+            'verbose': config.get('verbose', True),
+            'api_url': args.api_url,
+            'auth_token': args.auth_token
         }
     )
+
+    suites = {
+        'api': TestSuite(name="API Security", category=TestCategory.API_SECURITY, tests=[lambda: run_api_tests(orchestrator, orchestrator.config)], description="Comprehensive API security testing."),
+        'fuzz': TestSuite(name="Fuzz Testing", category=TestCategory.FUZZING, tests=[lambda: run_fuzz_tests(orchestrator, orchestrator.config)], description="Coverage-guided fuzzing of vulnerable functions."),
+        'property': TestSuite(name="Property-Based Testing", category=TestCategory.PROPERTY_BASED, tests=[lambda: run_property_tests(orchestrator, orchestrator.config)], description="Adversarial property-based testing."),
+        'race': TestSuite(name="Race Condition Detection", category=TestCategory.RACE_CONDITIONS, tests=[lambda: run_race_condition_tests(orchestrator, orchestrator.config)], description="Detecting concurrency vulnerabilities.")
+    }
+
+    suites_to_run = args.suites
+    if 'all' in suites_to_run:
+        suites_to_run = suites.keys()
+
+    for suite_name in suites_to_run:
+        if suite_name in suites:
+            orchestrator.register_test_suite(suites[suite_name])
     
-    # Define test functions for different categories
-    def test_sql_injection():
-        """Test for SQL injection vulnerabilities"""
-        # Simulated test
-        vulnerable = True  # In real scenario, this would test actual endpoints
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-001",
-                category=TestCategory.INJECTION,
-                severity=Severity.CRITICAL,
-                title="SQL Injection in User Login",
-                description="The login endpoint is vulnerable to SQL injection via the username parameter",
-                affected_component="/api/auth/login",
-                evidence="Payload: ' OR '1'='1' -- resulted in successful authentication bypass",
-                remediation="Use parameterized queries. Implement input validation. Use ORM framework.",
-                cvss_score=9.8,
-                cwe_id="CWE-89",
-                references=[
-                    "https://owasp.org/www-community/attacks/SQL_Injection",
-                    "https://cwe.mitre.org/data/definitions/89.html"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_authentication_bypass():
-        """Test for authentication bypass"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-002",
-                category=TestCategory.AUTHENTICATION,
-                severity=Severity.CRITICAL,
-                title="JWT Algorithm Confusion Attack",
-                description="API accepts JWT tokens with 'alg=none', allowing authentication bypass",
-                affected_component="/api/*",
-                evidence="Modified JWT with alg=none was accepted and granted full access",
-                remediation="Explicitly validate JWT algorithm. Only accept RS256 or HS256. Reject 'none' algorithm.",
-                cvss_score=9.1,
-                cwe_id="CWE-287",
-                references=[
-                    "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_idor():
-        """Test for IDOR/BOLA"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-003",
-                category=TestCategory.AUTHORIZATION,
-                severity=Severity.CRITICAL,
-                title="Insecure Direct Object Reference (IDOR)",
-                description="Users can access other users' data by modifying the user_id parameter",
-                affected_component="/api/users/{user_id}",
-                evidence="User A (id=123) successfully accessed User B's data (id=124) without authorization",
-                remediation="Implement proper authorization checks. Verify user owns requested resource. Use UUIDs instead of sequential IDs.",
-                cvss_score=8.2,
-                cwe_id="CWE-639",
-                references=[
-                    "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_rate_limiting():
-        """Test for lack of rate limiting"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-004",
-                category=TestCategory.API_SECURITY,
-                severity=Severity.HIGH,
-                title="No Rate Limiting on Critical Endpoints",
-                description="API endpoints accept unlimited requests, enabling brute force and DoS attacks",
-                affected_component="/api/auth/login, /api/password/reset",
-                evidence="Successfully made 10,000 requests in 30 seconds without throttling",
-                remediation="Implement rate limiting using token bucket or sliding window algorithm. Set appropriate limits per endpoint.",
-                cvss_score=7.5,
-                cwe_id="CWE-770",
-                references=[
-                    "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_race_condition():
-        """Test for race conditions"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-005",
-                category=TestCategory.RACE_CONDITIONS,
-                severity=Severity.HIGH,
-                title="Race Condition in Payment Processing",
-                description="Concurrent requests can lead to double-spending vulnerability",
-                affected_component="/api/payments/withdraw",
-                evidence="Successfully withdrew $1000 from account with $500 balance using concurrent requests",
-                remediation="Implement database transactions with proper isolation level. Use optimistic locking or row-level locking.",
-                cvss_score=7.8,
-                cwe_id="CWE-362",
-                references=[
-                    "https://cwe.mitre.org/data/definitions/362.html"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_sensitive_data_exposure():
-        """Test for sensitive data exposure"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-006",
-                category=TestCategory.API_SECURITY,
-                severity=Severity.HIGH,
-                title="Sensitive Data Exposure in API Responses",
-                description="API responses include sensitive fields like passwords, tokens, and internal IDs",
-                affected_component="/api/users",
-                evidence="Response includes: password_hash, api_key, internal_user_id, ssn_last4",
-                remediation="Filter response data. Only include necessary fields. Use DTOs (Data Transfer Objects).",
-                cvss_score=7.2,
-                cwe_id="CWE-200",
-                references=[
-                    "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_mass_assignment():
-        """Test for mass assignment"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-007",
-                category=TestCategory.API_SECURITY,
-                severity=Severity.MEDIUM,
-                title="Mass Assignment Vulnerability",
-                description="Users can set arbitrary fields including privileged ones (is_admin, role)",
-                affected_component="/api/users/update",
-                evidence="Successfully set 'is_admin': true and 'role': 'admin' via API request body",
-                remediation="Use allow-lists for updatable fields. Implement separate endpoints for privileged operations.",
-                cvss_score=6.5,
-                cwe_id="CWE-915",
-                references=[
-                    "https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_csrf():
-        """Test for CSRF protection"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-008",
-                category=TestCategory.API_SECURITY,
-                severity=Severity.MEDIUM,
-                title="Missing CSRF Protection",
-                description="State-changing operations lack CSRF tokens, enabling cross-site attacks",
-                affected_component="/api/users/delete, /api/settings/update",
-                evidence="Successfully executed DELETE /api/users/123 from attacker-controlled domain",
-                remediation="Implement CSRF tokens. Use SameSite cookie attribute. Validate Origin/Referer headers.",
-                cvss_score=6.1,
-                cwe_id="CWE-352",
-                references=[
-                    "https://owasp.org/www-community/attacks/csrf"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_security_headers():
-        """Test for security headers"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-009",
-                category=TestCategory.INFRASTRUCTURE,
-                severity=Severity.LOW,
-                title="Missing Security Headers",
-                description="Application lacks important security headers (CSP, HSTS, X-Frame-Options)",
-                affected_component="All endpoints",
-                evidence="Missing: Content-Security-Policy, Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options",
-                remediation="Implement all recommended security headers. Use helmet.js or equivalent.",
-                cvss_score=4.3,
-                cwe_id="CWE-16",
-                references=[
-                    "https://owasp.org/www-project-secure-headers/"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    def test_error_handling():
-        """Test error handling and information disclosure"""
-        vulnerable = True
-        
-        if vulnerable:
-            finding = Finding(
-                id="VULN-010",
-                category=TestCategory.INFRASTRUCTURE,
-                severity=Severity.LOW,
-                title="Verbose Error Messages",
-                description="Error messages expose internal system details including stack traces and file paths",
-                affected_component="All endpoints",
-                evidence="Error response includes: full stack trace, database connection string, file system paths",
-                remediation="Implement generic error messages for users. Log detailed errors server-side only.",
-                cvss_score=3.7,
-                cwe_id="CWE-209",
-                references=[
-                    "https://cwe.mitre.org/data/definitions/209.html"
-                ]
-            )
-            orchestrator.add_finding(finding)
-            return False
-        return True
-    
-    # Register test suites
-    injection_suite = TestSuite(
-        name="Injection Attack Testing",
-        category=TestCategory.INJECTION,
-        tests=[test_sql_injection],
-        description="Tests for SQL, NoSQL, Command, and other injection vulnerabilities"
-    )
-    orchestrator.register_test_suite(injection_suite)
-    
-    auth_suite = TestSuite(
-        name="Authentication & Authorization Testing",
-        category=TestCategory.AUTHENTICATION,
-        tests=[test_authentication_bypass, test_idor],
-        description="Tests for authentication bypass and authorization flaws"
-    )
-    orchestrator.register_test_suite(auth_suite)
-    
-    api_suite = TestSuite(
-        name="API Security Testing",
-        category=TestCategory.API_SECURITY,
-        tests=[
-            test_rate_limiting,
-            test_sensitive_data_exposure,
-            test_mass_assignment,
-            test_csrf
-        ],
-        description="Comprehensive API security testing (OWASP API Top 10)"
-    )
-    orchestrator.register_test_suite(api_suite)
-    
-    race_suite = TestSuite(
-        name="Concurrency Testing",
-        category=TestCategory.RACE_CONDITIONS,
-        tests=[test_race_condition],
-        description="Tests for race conditions and TOCTOU vulnerabilities"
-    )
-    orchestrator.register_test_suite(race_suite)
-    
-    infra_suite = TestSuite(
-        name="Infrastructure Security Testing",
-        category=TestCategory.INFRASTRUCTURE,
-        tests=[test_security_headers, test_error_handling],
-        description="Tests for infrastructure and configuration issues"
-    )
-    orchestrator.register_test_suite(infra_suite)
-    
-    # Execute all tests
     orchestrator.execute_all_tests()
     
-    # Generate reports
     print("\n" + orchestrator.generate_executive_summary())
     print("\n" + orchestrator.generate_technical_report())
     
-    # Export results
     orchestrator.export_json("red_team_findings.json")
     orchestrator.export_csv("red_team_findings.csv")
-    
-    print("\n[*] Red Team Assessment Complete")
-    print(f"[*] Risk Score: {orchestrator.calculate_risk_score():.1f}/100")
-    print(f"[*] Total Findings: {len(orchestrator.findings)}")
-    print(f"[*] Critical: {orchestrator.stats['critical_findings']}")
