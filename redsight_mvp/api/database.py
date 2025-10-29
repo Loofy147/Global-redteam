@@ -59,6 +59,7 @@ class Evidence(db.Model):
         }
 
 def init_app(app):
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    if 'SQLALCHEMY_DATABASE_URI' not in app.config:
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+    app.config.setdefault('SQLALCHEMY_TRACK_MODIFICATIONS', False)
     db.init_app(app)

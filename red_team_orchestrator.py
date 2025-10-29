@@ -202,27 +202,28 @@ class RedTeamOrchestrator:
         return True
 
     def run_race_condition_tests(self):
-        """Run the race condition detection suite"""
-        race_detector = RaceConditionDetector(threads=10)
-        class Counter:
-            def __init__(self):
-                self.value = 0
-            def increment(self):
-                current = self.value
-                time.sleep(0.0001)
-                self.value = current + 1
-        counter = Counter()
-        result = race_detector.test_concurrent_execution(counter.increment)
+        """Run the race condition detection suite on the withdrawal endpoint"""
+        race_detector = RaceConditionDetector(threads=10, iterations=5)
+        url = f"{self.config['api_url']}/api/payments/withdraw"
+        headers = {'Authorization': f"Bearer {self.config['auth_token']}"}
+        # Attempt to withdraw 100 from an account with a balance of 1000 ten times concurrently
+        json_payload = {'amount': 100}
+
+        result = race_detector.test_api_endpoint(url, 'POST', headers=headers, json=json_payload)
+
         if result.is_vulnerable:
             finding = Finding(
-                id="RACE-CONCURRENT-EXEC",
+                id="RACE-API-WITHDRAW",
                 category=TestCategory.RACE_CONDITIONS,
                 severity=Severity(result.severity),
-                title="Race condition detected in concurrent execution",
-                description=result.details,
-                affected_component="Counter.increment",
-                evidence=f"{result.unique_outcomes} unique outcomes",
-                remediation="Use locks or other synchronization primitives."
+                title="Race Condition in Withdrawal API (Double Spend)",
+                description=f"Concurrent requests to the withdrawal API resulted in multiple outcomes, "
+                              f"indicating a race condition. This could allow for 'double spending'. "
+                              f"Details: {result.details}",
+                affected_component="POST /api/payments/withdraw",
+                evidence=f"{result.unique_outcomes} unique outcomes observed.",
+                remediation="Implement a pessimistic lock (e.g., a mutex or database-level lock) "
+                              "around the balance check and withdrawal operation."
             )
             self.add_finding(finding)
             return False
@@ -607,7 +608,56 @@ class RedTeamOrchestrator:
         
         print(f"[+] CSV exported to {filepath}")
 
+    def export_html(self, filepath: str):
+        """Export findings as a standalone HTML report"""
+        html = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF--8">
+            <title>Red Team Security Report</title>
+            <style>
+                body { font-family: sans-serif; }
+                h1, h2 { color: #333; }
+                .finding { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+                .CRITICAL { border-left: 5px solid red; }
+                .HIGH { border-left: 5px solid orange; }
+                .MEDIUM { border-left: 5px solid yellow; }
+                .LOW { border-left: 5px solid lightblue; }
+            </style>
+        </head>
+        <body>
+            <h1>Red Team Security Report for """ + self.target_system + """</h1>
+            <h2>Summary</h2>
+            <p>Total Findings: """ + str(len(self.findings)) + """</p>
+            <ul>
+                <li>Critical: """ + str(self.stats['critical_findings']) + """</li>
+                <li>High: """ + str(self.stats['high_findings']) + """</li>
+                <li>Medium: """ + str(self.stats['medium_findings']) + """</li>
+                <li>Low: """ + str(self.stats['low_findings']) + """</li>
+            </ul>
+            <h2>Detailed Findings</h2>
+        """
 
+        for f in self.findings:
+            html += f"""
+            <div class="finding {f.severity.value.upper()}">
+                <h3>[{f.severity.value.upper()}] {f.title}</h3>
+                <p><strong>Category:</strong> {f.category.value}</p>
+                <p><strong>Component:</strong> {f.affected_component}</p>
+                <p><strong>Description:</strong> {f.description}</p>
+                <p><strong>Evidence:</strong> <pre><code>{f.evidence}</code></pre></p>
+                <p><strong>Remediation:</strong> {f.remediation}</p>
+            </div>
+            """
+
+        html += """
+        </body>
+        </html>
+        """
+        with open(filepath, 'w') as f:
+            f.write(html)
+        print(f"[+] HTML report exported to {filepath}")
 
 
 if __name__ == "__main__":
@@ -667,5 +717,6 @@ if __name__ == "__main__":
 
         orchestrator.export_json("red_team_findings.json")
         orchestrator.export_csv("red_team_findings.csv")
+        orchestrator.export_html("red_team_report.html")
     else:
         parser.print_help()
