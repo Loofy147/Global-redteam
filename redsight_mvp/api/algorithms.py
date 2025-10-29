@@ -2,16 +2,18 @@ import hashlib
 from datetime import datetime
 from .database import db, Finding, Evidence
 
+
 def normalize_text(text):
     return text.lower().strip()
+
 
 def generate_canonical_fingerprint(finding_data):
     """
     Computes a unique fingerprint for a finding.
     """
-    title = normalize_text(finding_data.get('finding_title', ''))
-    asset_id = finding_data.get('asset', {}).get('asset_id', '')
-    cwe = finding_data.get('cwe', '')
+    title = normalize_text(finding_data.get("finding_title", ""))
+    asset_id = finding_data.get("asset", {}).get("asset_id", "")
+    cwe = finding_data.get("cwe", "")
 
     # In a real implementation, we would add more normalization logic here
     # (e.g., for file paths, stack traces, etc.)
@@ -19,12 +21,15 @@ def generate_canonical_fingerprint(finding_data):
     fingerprint_str = f"{title}|{asset_id}|{cwe}"
     return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
+
 def generate_canonical_finding(raw_finding):
     """
     Takes a raw finding payload, de-duplicates it, and returns a Finding DB model.
     """
     fingerprint = generate_canonical_fingerprint(raw_finding)
-    existing_finding = Finding.query.filter_by(canonical_fingerprint=fingerprint).first()
+    existing_finding = Finding.query.filter_by(
+        canonical_fingerprint=fingerprint
+    ).first()
 
     now = datetime.utcnow()
 
@@ -33,42 +38,43 @@ def generate_canonical_finding(raw_finding):
         existing_finding.occurrences = (existing_finding.occurrences or 0) + 1
 
         # Merge evidence (simple append for now)
-        if raw_finding.get('evidence'):
-            for ev in raw_finding['evidence']:
+        if raw_finding.get("evidence"):
+            for ev in raw_finding["evidence"]:
                 new_evidence = Evidence(
-                    type=ev.get('type'),
-                    content=ev.get('content'),
-                    artifact_url=ev.get('artifact_url')
+                    type=ev.get("type"),
+                    content=ev.get("content"),
+                    artifact_url=ev.get("artifact_url"),
                 )
                 existing_finding.evidence.append(new_evidence)
         return existing_finding
     else:
-        asset = raw_finding.get('asset', {})
+        asset = raw_finding.get("asset", {})
         new_finding = Finding(
-            canonical_id=raw_finding.get('canonical_id'),
-            title=raw_finding.get('finding_title'),
-            description=raw_finding.get('description'),
-            severity=raw_finding.get('severity'),
-            cvss=raw_finding.get('cvss'),
-            cwe=raw_finding.get('cwe'),
-            asset_id=asset.get('asset_id'),
+            canonical_id=raw_finding.get("canonical_id"),
+            title=raw_finding.get("finding_title"),
+            description=raw_finding.get("description"),
+            severity=raw_finding.get("severity"),
+            cvss=raw_finding.get("cvss"),
+            cwe=raw_finding.get("cwe"),
+            asset_id=asset.get("asset_id"),
             first_seen=now,
             last_seen=now,
             canonical_fingerprint=fingerprint,
             occurrences=1,
-            status='open'
+            status="open",
         )
 
-        if raw_finding.get('evidence'):
-            for ev in raw_finding['evidence']:
+        if raw_finding.get("evidence"):
+            for ev in raw_finding["evidence"]:
                 new_evidence = Evidence(
-                    type=ev.get('type'),
-                    content=ev.get('content'),
-                    artifact_url=ev.get('artifact_url')
+                    type=ev.get("type"),
+                    content=ev.get("content"),
+                    artifact_url=ev.get("artifact_url"),
                 )
                 new_finding.evidence.append(new_evidence)
 
         return new_finding
+
 
 def compute_confidence(scanner_score, evidence_types, repro_result, occurrences):
     """

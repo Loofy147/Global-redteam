@@ -3,11 +3,11 @@ import subprocess
 import time
 import os
 import signal
-from red_team_orchestrator import RedTeamOrchestrator, TestCategory, Severity
-from red_team_api_tester import APISecurityTester, APIEndpoint
-from red_team_fuzzer import CoverageGuidedFuzzer
-from red_team_property_testing import PropertyTester
-from red_team_race_detector import RaceConditionDetector
+from global_red_team.red_team_orchestrator import RedTeamOrchestrator
+from global_red_team.models import TestCategory
+from global_red_team.red_team_api_tester import APISecurityTester, APIEndpoint
+from global_red_team.config import Settings
+
 
 @pytest.fixture(scope="module")
 def vulnerable_app():
@@ -15,33 +15,38 @@ def vulnerable_app():
     db_file = "findings.db"
     if os.path.exists(db_file):
         os.remove(db_file)
-    init_db_process = subprocess.Popen(["python3", "database.py"])
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.getcwd() + "/src"
+    init_db_process = subprocess.Popen(
+        ["python3", "-m", "global_red_team.database"], env=env
+    )
     init_db_process.wait()
-    app_process = subprocess.Popen(["python3", "vulnerable_app/app.py"])
+    app_process = subprocess.Popen(["python3", "vulnerable_app/app.py"], env=env)
     time.sleep(2)  # Give the app time to start
     yield "http://localhost:5000"
     os.kill(app_process.pid, signal.SIGTERM)
+
 
 def test_integration(vulnerable_app):
     """
     Runs the orchestrator against the vulnerable app and asserts that vulnerabilities are found.
     """
-    orchestrator = RedTeamOrchestrator(
+    settings = Settings(
         target_system="Vulnerable Flask App",
-        config={
-            'api_url': vulnerable_app,
-            'auth_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w'
-        }
+        api_url=vulnerable_app,
+        auth_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w",
     )
+    orchestrator = RedTeamOrchestrator(settings)
 
     def run_api_tests():
-        api_tester = APISecurityTester(base_url=orchestrator.config['api_url'], auth_token=orchestrator.config['auth_token'])
+        api_tester = APISecurityTester(
+            base_url=orchestrator.settings.api_url,
+            auth_token=orchestrator.settings.auth_token,
+        )
         endpoints = [
             APIEndpoint(path="/api/users/2", method="GET"),
             APIEndpoint(path="/api/admin/users", method="GET"),
         ]
-        api_tester = APISecurityTester(base_url=orchestrator.config['api_url'], auth_token=orchestrator.config['auth_token'])
-        endpoints = api_tester.discover_endpoints_from_swagger("vulnerable_app/swagger.json")
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
             if not result.passed:
@@ -52,7 +57,7 @@ def test_integration(vulnerable_app):
         "API Security",
         TestCategory.API_SECURITY,
         [run_api_tests],
-        "Integration test for API security"
+        "Integration test for API security",
     )
 
     def run_fuzz_tests():
@@ -62,10 +67,10 @@ def test_integration(vulnerable_app):
         "Fuzz Testing",
         TestCategory.FUZZING,
         [run_fuzz_tests],
-        "Integration test for fuzzing"
+        "Integration test for fuzzing",
     )
 
     orchestrator.execute_all_tests()
 
-    assert orchestrator.stats['critical_findings'] > 0
-    assert orchestrator.stats['medium_findings'] > 0
+    assert orchestrator.stats["critical_findings"] > 0
+    assert orchestrator.stats["medium_findings"] > 0

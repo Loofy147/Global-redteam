@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Any, List
 import requests
 
+
 @dataclass
 class RaceConditionResult:
     is_vulnerable: bool
@@ -12,12 +13,15 @@ class RaceConditionResult:
     unique_outcomes: int
     severity: str = "medium"
 
+
 class RaceConditionDetector:
     def __init__(self, threads: int = 10, iterations: int = 2):
         self.threads = threads
         self.iterations = iterations
 
-    def test_concurrent_execution(self, target_function: Callable[[], Any]) -> RaceConditionResult:
+    def test_concurrent_execution(
+        self, target_function: Callable[[], Any]
+    ) -> RaceConditionResult:
         outcomes = defaultdict(int)
         for _ in range(self.iterations):
             threads = []
@@ -42,20 +46,24 @@ class RaceConditionDetector:
                 is_vulnerable=True,
                 details=f"Detected {len(outcomes)} unique outcomes during concurrent execution.",
                 unique_outcomes=len(outcomes),
-                severity="high"
+                severity="high",
             )
 
         return RaceConditionResult(
             is_vulnerable=False,
             details="Concurrent execution yielded consistent results.",
-            unique_outcomes=1
+            unique_outcomes=1,
         )
 
-    def test_api_endpoint(self, url: str, method: str, headers: dict = None, json: dict = None) -> RaceConditionResult:
+    def test_api_endpoint(
+        self, url: str, method: str, headers: dict = None, json: dict = None
+    ) -> RaceConditionResult:
 
         def make_request():
             try:
-                response = requests.request(method, url, headers=headers, json=json, timeout=5)
+                response = requests.request(
+                    method, url, headers=headers, json=json, timeout=5
+                )
                 return response.status_code, response.text
             except requests.RequestException as e:
                 return None, str(e)
