@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     max_threads: int = Field(100, env="MAX_THREADS")
     timeout: float = Field(5.0, env="TIMEOUT")
     verbose: bool = Field(True, env="VERBOSE")
+    static_analysis_path: str = Field("./vulnerable_app", env="STATIC_ANALYSIS_PATH")
     fuzzing: FuzzingSettings = FuzzingSettings()
 
     class Config:
