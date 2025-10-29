@@ -87,6 +87,12 @@ class ReportGenerator:
             summary.append(f"  {i}. {finding.title}")
             summary.append(f"     Impact: {finding.description}")
 
+        exploited_vulns = [f for f in self.findings if f.threat_intel]
+        if exploited_vulns:
+            summary.append("\n**[!] ACTIVELY EXPLOITED VULNERABILITIES DETECTED**")
+            for vuln in exploited_vulns:
+                summary.append(f"  - {vuln.title} ({vuln.cve_id})")
+
         summary.append(f"\nRECOMMENDATIONS:")
         if self.stats["critical_findings"] > 0:
             summary.append(
@@ -175,6 +181,15 @@ class ReportGenerator:
                         report.append(f"   CVSS Score: {finding.cvss_score}")
                     if finding.cwe_id:
                         report.append(f"   CWE: {finding.cwe_id}")
+                    if finding.cve_id:
+                        report.append(f"   CVE: {finding.cve_id}")
+
+                    if finding.threat_intel:
+                        report.append(
+                            "\n   **[!] THREAT INTELLIGENCE: ACTIVELY EXPLOITED**"
+                        )
+                        summary = finding.threat_intel.get("summary", "N/A")
+                        report.append(f"   Summary: {summary}")
 
                     report.append(f"\n   Description:")
                     report.append(f"   {finding.description}")

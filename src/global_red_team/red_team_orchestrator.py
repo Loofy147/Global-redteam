@@ -15,6 +15,7 @@ from .red_team_race_detector import RaceConditionDetector
 from .reporting import ReportGenerator
 from .models import Finding, Severity, TestCategory, TestSuite
 from .config import Settings
+from .threat_intelligence import ThreatIntelligence
 from typing import Dict, List, Callable, Optional
 from datetime import datetime
 
@@ -31,6 +32,9 @@ class RedTeamOrchestrator:
         self.findings: List[Finding] = []
         self.test_suites: List[TestSuite] = []
         self.execution_log: List[Dict] = []
+        self.threat_intelligence = ThreatIntelligence(
+            "src/global_red_team/known_exploited_vulnerabilities.json"
+        )
 
         self.stats = {
             "total_tests": 0,
@@ -40,8 +44,8 @@ class RedTeamOrchestrator:
             "high_findings": 0,
             "medium_findings": 0,
             "low_findings": 0,
-            "start_time": None,
-            "end_time": None,
+            "start_time": datetime.now(),
+            "end_time": datetime.now(),
         }
 
     def register_test_suite(
@@ -198,6 +202,12 @@ class RedTeamOrchestrator:
 
     def add_finding(self, finding: Finding):
         """Add a security finding"""
+        if finding.cve_id:
+            threat_info = self.threat_intelligence.get_threat_info(finding.cve_id)
+            if threat_info:
+                finding.severity = Severity.CRITICAL
+                finding.threat_intel = threat_info
+
         self.findings.append(finding)
         db.save_finding(finding)
 
