@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  vulnerable_app:
+    build:
+      context: ./vulnerable_app
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+
+  red_team_orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - vulnerable_app
+    environment:
+      - API_URL=http://vulnerable_app:5000
