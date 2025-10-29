@@ -15,6 +15,7 @@ class TestCategory(Enum):
     FUZZING = "fuzzing"
     API_SECURITY = "api_security"
     RACE_CONDITIONS = "race_conditions"
+    STATIC_ANALYSIS = "static_analysis"
     INJECTION = "injection"
     AUTHENTICATION = "authentication"
     AUTHORIZATION = "authorization"

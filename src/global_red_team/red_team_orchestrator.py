@@ -15,7 +15,9 @@ from .red_team_race_detector import RaceConditionDetector
 from .reporting import ReportGenerator
 from .models import Finding, Severity, TestCategory, TestSuite
 from .config import Settings
+import os
 from .threat_intelligence import ThreatIntelligence
+from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerability, VulnerabilityPattern
 from typing import Dict, List, Callable, Optional
 from datetime import datetime
 
@@ -168,6 +170,43 @@ class RedTeamOrchestrator:
                 )
                 self.add_finding(finding)
             return False
+        return True
+
+    def _convert_code_vuln_to_finding(self, vuln: Dict) -> Finding:
+        """Converts a CodeVulnerability object to a Finding object."""
+        pattern = VulnerabilityPattern(vuln["pattern"])
+        return Finding(
+            id=f"sast-{hashlib.sha1(f'{vuln['file_path']}{vuln['line_number']}{pattern.value}'.encode()).hexdigest()[:10]}",
+            category=TestCategory.STATIC_ANALYSIS,
+            severity=Severity(vuln["severity"]),
+            title=f"{pattern.value.replace('_', ' ').title()} in {vuln['file_path']}",
+            description=vuln["explanation"],
+            affected_component=f"{vuln['file_path']}:{vuln['line_number']}",
+            evidence=vuln['code_snippet'],
+            remediation=vuln['remediation'],
+        )
+
+    def run_sast_scan(self):
+        """Runs the AI-powered static analysis scan on the target codebase."""
+        sast_engine = AIVulnerabilityDiscovery()
+        target_path = self.settings.static_analysis_path
+
+        if not os.path.isdir(target_path):
+            print(f"[!] Invalid static analysis path: {target_path}")
+            return False
+
+        for root, _, files in os.walk(target_path):
+            for file in files:
+                if file.endswith(".py"):
+                    file_path = os.path.join(root, file)
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        code = f.read()
+
+                    results = sast_engine.discover_vulnerabilities(code, file_path)
+                    for vuln in results.get("static_analysis", []):
+                        finding = self._convert_code_vuln_to_finding(vuln)
+                        self.add_finding(finding)
+
         return True
 
     def run_race_condition_tests(self):
@@ -394,6 +433,11 @@ if __name__ == "__main__":
             TestCategory.RACE_CONDITIONS,
             [orchestrator.run_race_condition_tests],
             "Detecting concurrency vulnerabilities.",
+        ),
+        "sast": (
+            TestCategory.STATIC_ANALYSIS,
+            [orchestrator.run_sast_scan],
+            "AI-powered static analysis of the codebase.",
         ),
     }
 
