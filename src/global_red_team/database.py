@@ -3,6 +3,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, Any, List
 from .models import Finding
+from .logger import logger
 
 DB_FILE = "findings.db"
 
@@ -43,7 +44,7 @@ def init_db() -> None:
         """
         )
         conn.commit()
-    print("[*] Database initialized.")
+    logger.info("Database initialized.")
 
 
 def generate_finding_hash(finding: Finding) -> str:
@@ -81,7 +82,7 @@ def save_finding(finding: Finding) -> None:
             """,
                 (now, status, is_regression, finding_hash),
             )
-            print(f"[!] Updated existing finding: {finding.title}")
+            logger.info(f"Updated existing finding: {finding.title}")
         else:
             # It's a new finding
             cursor.execute(
@@ -102,7 +103,7 @@ def save_finding(finding: Finding) -> None:
                     now,
                 ),
             )
-            print(f"[!] Saved new finding: {finding.title}")
+            logger.info(f"Saved new finding: {finding.title}")
         conn.commit()
 
 
@@ -124,7 +125,7 @@ def close_old_findings(run_start_time: datetime) -> None:
             (run_start_time,),
         )
         conn.commit()
-        print(f"[+] Closed {cursor.rowcount} old findings.")
+        logger.info(f"Closed {cursor.rowcount} old findings.")
 
 
 def get_findings_summary() -> Dict[str, Any]:

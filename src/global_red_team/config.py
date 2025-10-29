@@ -2,7 +2,7 @@
 This module contains the Pydantic settings model for the Red Team Orchestrator.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, List
 
@@ -29,19 +29,21 @@ class FuzzingSettings(BaseSettings):
 class Settings(BaseSettings):
     """Settings for the Red Team Orchestrator."""
 
-    target_system: str = Field("Production API v2.0", env="TARGET_SYSTEM")
-    api_url: str = Field("https://api.example.com", env="API_URL")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    target_system: str = Field(
+        "Production API v2.0", json_schema_extra={"env": "TARGET_SYSTEM"}
+    )
+    api_url: str = Field("https://api.example.com", json_schema_extra={"env": "API_URL"})
     auth_token: str = Field(
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test",
-        env="AUTH_TOKEN",
+        json_schema_extra={"env": "AUTH_TOKEN"},
     )
-    swagger_file: Optional[str] = Field(None, env="SWAGGER_FILE")
-    max_threads: int = Field(100, env="MAX_THREADS")
-    timeout: float = Field(5.0, env="TIMEOUT")
-    verbose: bool = Field(True, env="VERBOSE")
-    static_analysis_path: str = Field("./vulnerable_app", env="STATIC_ANALYSIS_PATH")
+    swagger_file: Optional[str] = Field(None, json_schema_extra={"env": "SWAGGER_FILE"})
+    max_threads: int = Field(100, json_schema_extra={"env": "MAX_THREADS"})
+    timeout: float = Field(5.0, json_schema_extra={"env": "TIMEOUT"})
+    verbose: bool = Field(True, json_schema_extra={"env": "VERBOSE"})
+    static_analysis_path: str = Field(
+        "./vulnerable_app", json_schema_extra={"env": "STATIC_ANALYSIS_PATH"}
+    )
     fuzzing: FuzzingSettings = FuzzingSettings()
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"

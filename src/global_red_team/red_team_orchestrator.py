@@ -13,13 +13,14 @@ from .red_team_fuzzer import CoverageGuidedFuzzer
 from .red_team_property_testing import PropertyTester
 from .red_team_race_detector import RaceConditionDetector
 from .reporting import ReportGenerator
-from .models import Finding, Severity, TestCategory, TestSuite
+from .models import Finding, Severity, SecurityTestCategory, TestSuite
 from .config import Settings
 import os
 from .threat_intelligence import ThreatIntelligence
 from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerability, VulnerabilityPattern
 from typing import Dict, List, Callable, Optional
 from datetime import datetime
+from .logger import logger
 
 
 class RedTeamOrchestrator:
@@ -53,7 +54,7 @@ class RedTeamOrchestrator:
     def register_test_suite(
         self,
         name: str,
-        category: TestCategory,
+        category: SecurityTestCategory,
         tests: List[Callable],
         description: str = "",
     ):
@@ -62,7 +63,7 @@ class RedTeamOrchestrator:
             name=name, category=category, tests=tests, description=description
         )
         self.test_suites.append(suite)
-        print(f"[+] Registered test suite: {suite.name} ({len(suite.tests)} tests)")
+        logger.info(f"Registered test suite: {suite.name} ({len(suite.tests)} tests)")
 
     def add_finding_from_result(self, result, category):
         """Add a finding from a test result object"""
@@ -97,7 +98,7 @@ class RedTeamOrchestrator:
 
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
-            self.add_finding_from_result(result, TestCategory.API_SECURITY)
+            self.add_finding_from_result(result, SecurityTestCategory.API_SECURITY)
         return not any(not r.passed for r in results)
 
     def run_fuzz_tests(self):
@@ -114,8 +115,8 @@ class RedTeamOrchestrator:
         target_functions = {"vulnerable_parser": vulnerable_parser}
 
         if target_function_name not in target_functions:
-            print(
-                f"[!] Fuzzing target function '{target_function_name}' not found. Skipping."
+            logger.warning(
+                f"Fuzzing target function '{target_function_name}' not found. Skipping."
             )
             return True
 
@@ -134,7 +135,7 @@ class RedTeamOrchestrator:
             for crash in fuzzer.crashes:
                 finding = Finding(
                     id=f"FUZZ-{hashlib.sha1(crash.input_data).hexdigest()}",
-                    category=TestCategory.FUZZING,
+                    category=SecurityTestCategory.FUZZING,
                     severity=Severity.HIGH,
                     title="Fuzzer discovered a crash",
                     description=str(crash.exception),
@@ -160,7 +161,7 @@ class RedTeamOrchestrator:
             for failure in property_tester.failures:
                 finding = Finding(
                     id=f"PROP-{failure.vulnerability_type.value}",
-                    category=TestCategory.PROPERTY_BASED,
+                    category=SecurityTestCategory.PROPERTY_BASED,
                     severity=Severity.HIGH,
                     title=f"Property test failed: {failure.vulnerability_type.value}",
                     description=f"Input: {failure.input_value}, Output: {failure.output_value}",
@@ -174,10 +175,10 @@ class RedTeamOrchestrator:
 
     def _convert_code_vuln_to_finding(self, vuln: Dict) -> Finding:
         """Converts a CodeVulnerability object to a Finding object."""
-        pattern = VulnerabilityPattern(vuln["pattern"])
+        pattern = vuln["pattern"]
         return Finding(
             id=f"sast-{hashlib.sha1(f'{vuln['file_path']}{vuln['line_number']}{pattern.value}'.encode()).hexdigest()[:10]}",
-            category=TestCategory.STATIC_ANALYSIS,
+            category=SecurityTestCategory.STATIC_ANALYSIS,
             severity=Severity(vuln["severity"]),
             title=f"{pattern.value.replace('_', ' ').title()} in {vuln['file_path']}",
             description=vuln["explanation"],
@@ -192,15 +193,19 @@ class RedTeamOrchestrator:
         target_path = self.settings.static_analysis_path
 
         if not os.path.isdir(target_path):
-            print(f"[!] Invalid static analysis path: {target_path}")
+            logger.warning(f"Invalid static analysis path: {target_path}")
             return False
 
         for root, _, files in os.walk(target_path):
             for file in files:
                 if file.endswith(".py"):
                     file_path = os.path.join(root, file)
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        code = f.read()
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            code = f.read()
+                    except (FileNotFoundError, IOError) as e:
+                        logger.error(f"Error reading file {file_path}: {e}")
+                        continue
 
                     results = sast_engine.discover_vulnerabilities(code, file_path)
                     for vuln in results.get("static_analysis", []):
@@ -224,7 +229,7 @@ class RedTeamOrchestrator:
         if result.is_vulnerable:
             finding = Finding(
                 id="RACE-API-WITHDRAW",
-                category=TestCategory.RACE_CONDITIONS,
+                category=SecurityTestCategory.RACE_CONDITIONS,
                 severity=Severity(result.severity),
                 title="Race Condition in Withdrawal API (Double Spend)",
                 description=f"Concurrent requests to the withdrawal API resulted in multiple outcomes, "
@@ -260,16 +265,16 @@ class RedTeamOrchestrator:
         elif finding.severity == Severity.LOW:
             self.stats["low_findings"] += 1
 
-        print(f"[!] Finding: [{finding.severity.value.upper()}] {finding.title}")
+        logger.warning(f"Finding: [{finding.severity.value.upper()}] {finding.title}")
 
     def execute_all_tests(self):
         """Execute all registered test suites"""
-        print("=" * 80)
-        print(f"RED TEAM ASSESSMENT: {self.target_system}")
-        print("=" * 80)
-        print(f"Start Time: {datetime.now()}")
-        print(f"Test Suites: {len(self.test_suites)}")
-        print("=" * 80)
+        logger.info("=" * 80)
+        logger.info(f"RED TEAM ASSESSMENT: {self.target_system}")
+        logger.info("=" * 80)
+        logger.info(f"Start Time: {datetime.now()}")
+        logger.info(f"Test Suites: {len(self.test_suites)}")
+        logger.info("=" * 80)
 
         self.stats["start_time"] = datetime.now()
 
@@ -277,14 +282,14 @@ class RedTeamOrchestrator:
             if not suite.enabled:
                 continue
 
-            print(f"\n[*] Executing Test Suite: {suite.name}")
-            print(f"    Category: {suite.category.value}")
-            print(f"    Tests: {len(suite.tests)}")
-            print("-" * 80)
+            logger.info(f"\n[*] Executing Test Suite: {suite.name}")
+            logger.info(f"    Category: {suite.category.value}")
+            logger.info(f"    Tests: {len(suite.tests)}")
+            logger.info("-" * 80)
 
             for i, test_func in enumerate(suite.tests, 1):
                 try:
-                    print(f"  [{i}/{len(suite.tests)}] Running {test_func.__name__}...")
+                    logger.info(f"  [{i}/{len(suite.tests)}] Running {test_func.__name__}...")
 
                     start = time.time()
                     result = test_func()
@@ -304,15 +309,15 @@ class RedTeamOrchestrator:
 
                     if result:
                         self.stats["tests_passed"] += 1
-                        print(f"      ✓ PASS ({elapsed:.2f}s)")
+                        logger.info(f"      ✓ PASS ({elapsed:.2f}s)")
                     else:
                         self.stats["tests_failed"] += 1
-                        print(f"      ✗ FAIL ({elapsed:.2f}s)")
+                        logger.warning(f"      ✗ FAIL ({elapsed:.2f}s)")
 
                 except Exception as e:
                     self.stats["total_tests"] += 1
                     self.stats["tests_failed"] += 1
-                    print(f"      ✗ ERROR: {e}")
+                    logger.error(f"      ✗ ERROR: {e}")
 
                     # Log error
                     log_entry = {
@@ -328,19 +333,19 @@ class RedTeamOrchestrator:
 
         db.close_old_findings(self.stats["start_time"])
 
-        print("\n" + "=" * 80)
-        print("Assessment Complete")
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info("Assessment Complete")
+        logger.info("=" * 80)
         self._print_summary()
 
     def _print_summary(self):
         """Print execution summary"""
         duration = (self.stats["end_time"] - self.stats["start_time"]).total_seconds()
 
-        print(f"\nExecution Time: {duration:.2f}s")
-        print(f"Total Tests: {self.stats['total_tests']}")
-        print(f"  Passed: {self.stats['tests_passed']}")
-        print(f"  Failed: {self.stats['tests_failed']}")
+        logger.info(f"\nExecution Time: {duration:.2f}s")
+        logger.info(f"Total Tests: {self.stats['total_tests']}")
+        logger.info(f"  Passed: {self.stats['tests_passed']}")
+        logger.info(f"  Failed: {self.stats['tests_failed']}")
 
         summary = db.get_findings_summary()
         new_findings = (
@@ -356,13 +361,13 @@ class RedTeamOrchestrator:
             + summary.get("low_regression", 0)
         )
 
-        print(f"\nFindings: {len(self.findings)}")
-        print(f"  New: {new_findings}")
-        print(f"  Regressions: {regressions}")
-        print(f"  Critical: {self.stats['critical_findings']}")
-        print(f"  High: {self.stats['high_findings']}")
-        print(f"  Medium: {self.stats['medium_findings']}")
-        print(f"  Low: {self.stats['low_findings']}")
+        logger.info(f"\nFindings: {len(self.findings)}")
+        logger.info(f"  New: {new_findings}")
+        logger.info(f"  Regressions: {regressions}")
+        logger.info(f"  Critical: {self.stats['critical_findings']}")
+        logger.info(f"  High: {self.stats['high_findings']}")
+        logger.info(f"  Medium: {self.stats['medium_findings']}")
+        logger.info(f"  Low: {self.stats['low_findings']}")
 
 
 if __name__ == "__main__":
@@ -415,27 +420,27 @@ if __name__ == "__main__":
 
     suites = {
         "api": (
-            TestCategory.API_SECURITY,
+            SecurityTestCategory.API_SECURITY,
             [orchestrator.run_api_tests],
             "Comprehensive API security testing.",
         ),
         "fuzz": (
-            TestCategory.FUZZING,
+            SecurityTestCategory.FUZZING,
             [orchestrator.run_fuzz_tests],
             "Coverage-guided fuzzing of vulnerable functions.",
         ),
         "property": (
-            TestCategory.PROPERTY_BASED,
+            SecurityTestCategory.PROPERTY_BASED,
             [orchestrator.run_property_tests],
             "Adversarial property-based testing.",
         ),
         "race": (
-            TestCategory.RACE_CONDITIONS,
+            SecurityTestCategory.RACE_CONDITIONS,
             [orchestrator.run_race_condition_tests],
             "Detecting concurrency vulnerabilities.",
         ),
         "sast": (
-            TestCategory.STATIC_ANALYSIS,
+            SecurityTestCategory.STATIC_ANALYSIS,
             [orchestrator.run_sast_scan],
             "AI-powered static analysis of the codebase.",
         ),
@@ -447,28 +452,28 @@ if __name__ == "__main__":
         summary = db.get_findings_summary()
         open_findings = db.get_open_findings()
 
-        print("=" * 80)
-        print("SECURITY DASHBOARD")
-        print("=" * 80)
+        logger.info("=" * 80)
+        logger.info("SECURITY DASHBOARD")
+        logger.info("=" * 80)
 
-        print("\n--- Open Findings by Severity ---")
+        logger.info("\n--- Open Findings by Severity ---")
         criticals = summary.get("critical_open", 0) + summary.get("critical_new", 0)
         highs = summary.get("high_open", 0) + summary.get("high_new", 0)
         mediums = summary.get("medium_open", 0) + summary.get("medium_new", 0)
         lows = summary.get("low_open", 0) + summary.get("low_new", 0)
         regressions = sum(v for k, v in summary.items() if "regression" in k)
 
-        print(f"  Critical: {criticals}")
-        print(f"  High:     {highs}")
-        print(f"  Medium:   {mediums}")
-        print(f"  Low:      {lows}")
-        print(f"  Regressions: {regressions}")
-        print("-" * 30)
-        print(f"  Total:    {criticals + highs + mediums + lows}")
+        logger.info(f"  Critical: {criticals}")
+        logger.info(f"  High:     {highs}")
+        logger.info(f"  Medium:   {mediums}")
+        logger.info(f"  Low:      {lows}")
+        logger.info(f"  Regressions: {regressions}")
+        logger.info("-" * 30)
+        logger.info(f"  Total:    {criticals + highs + mediums + lows}")
 
-        print("\n--- Recent Open Findings ---")
+        logger.info("\n--- Recent Open Findings ---")
         if not open_findings:
-            print("  No open findings. Great job!")
+            logger.info("  No open findings. Great job!")
         else:
             for finding in open_findings[:10]:  # Display top 10
                 status = (
@@ -476,11 +481,11 @@ if __name__ == "__main__":
                     if finding["is_regression"]
                     else finding["status"].upper()
                 )
-                print(
+                logger.info(
                     f"  - [{finding['severity'].upper()}] [{status}] {finding['title']} (Last Seen: {finding['last_seen']})"
                 )
 
-        print("\n" + "=" * 80)
+        logger.info("\n" + "=" * 80)
 
     elif args.suites:
         suites_to_run = args.suites
@@ -503,8 +508,8 @@ if __name__ == "__main__":
             orchestrator.test_suites,
         )
 
-        print("\n" + report_generator.generate_executive_summary())
-        print("\n" + report_generator.generate_technical_report())
+        logger.info("\n" + report_generator.generate_executive_summary())
+        logger.info("\n" + report_generator.generate_technical_report())
 
         report_generator.export_json("red_team_findings.json")
         report_generator.export_csv("red_team_findings.csv")
