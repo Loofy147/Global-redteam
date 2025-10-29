@@ -47,6 +47,8 @@ class Finding:
     remediation: str
     cvss_score: float = 0.0
     cwe_id: Optional[str] = None
+    cve_id: Optional[str] = None
+    threat_intel: Optional[dict] = None
     references: List[str] = field(default_factory=list)
     discovered_at: datetime = field(default_factory=datetime.now)
 
