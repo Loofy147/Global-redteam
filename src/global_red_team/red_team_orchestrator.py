@@ -199,7 +199,7 @@ class RedTeamOrchestrator:
     def run_sast_scan(self):
         """Runs the AI-powered static analysis scan on the target codebase."""
         sast_engine = AIVulnerabilityDiscovery()
-        target_path = self.settings.static_analysis_path
+        target_path = self.settings.target_system
 
         if not os.path.isdir(target_path):
             logger.warning(f"Invalid static analysis path: {target_path}")
