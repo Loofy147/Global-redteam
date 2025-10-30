@@ -3,7 +3,7 @@ Advanced Coverage-Guided Fuzzing Engine
 Inspired by AFL (American Fuzzy Lop) - discovers vulnerabilities through intelligent mutation
 """
 
-import random
+import secrets
 import sys
 import hashlib
 import time
@@ -87,7 +87,7 @@ class Mutator:
     """Intelligent mutation engine for fuzzing"""
 
     def __init__(self, seed: Optional[int] = None):
-        self.random = random.Random(seed)
+        self.random = secrets.SystemRandom()
         self.interesting_8bit = [-128, -1, 0, 1, 16, 32, 64, 100, 127]
         self.interesting_16bit = [
             -32768,
