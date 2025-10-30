@@ -4,7 +4,7 @@ import time
 import os
 import signal
 from global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from global_red_team.models import TestCategory
+from global_red_team.models import SecurityTestCategory
 from global_red_team.red_team_api_tester import APISecurityTester, APIEndpoint
 from global_red_team.config import Settings
 
@@ -50,12 +50,12 @@ def test_integration(vulnerable_app):
         results = api_tester.test_comprehensive(endpoints)
         for result in results:
             if not result.passed:
-                orchestrator.add_finding_from_result(result, TestCategory.API_SECURITY)
+                orchestrator.add_finding_from_result(result, SecurityTestCategory.API_SECURITY)
         return not any(not r.passed for r in results)
 
     orchestrator.register_test_suite(
         "API Security",
-        TestCategory.API_SECURITY,
+        SecurityTestCategory.API_SECURITY,
         [run_api_tests],
         "Integration test for API security",
     )
@@ -65,7 +65,7 @@ def test_integration(vulnerable_app):
 
     orchestrator.register_test_suite(
         "Fuzz Testing",
-        TestCategory.FUZZING,
+        SecurityTestCategory.FUZZING,
         [run_fuzz_tests],
         "Integration test for fuzzing",
     )

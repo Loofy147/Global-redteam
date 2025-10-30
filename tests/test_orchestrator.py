@@ -1,6 +1,6 @@
 import pytest
 from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from src.global_red_team.models import Finding, TestCategory, Severity, TestSuite
+from src.global_red_team.models import Finding, SecurityTestCategory, Severity, TestSuite
 from src.global_red_team.config import Settings
 
 
@@ -20,7 +20,7 @@ def test_register_test_suite(settings):
 
     orchestrator.register_test_suite(
         name="Dummy Suite",
-        category=TestCategory.API_SECURITY,
+        category=SecurityTestCategory.API_SECURITY,
         tests=[dummy_test],
         description="A dummy test suite.",
     )
@@ -36,7 +36,7 @@ def test_add_finding(settings):
 
     finding = Finding(
         id="test-finding",
-        category=TestCategory.API_SECURITY,
+        category=SecurityTestCategory.API_SECURITY,
         severity=Severity.HIGH,
         title="Test Finding",
         description="This is a test finding.",

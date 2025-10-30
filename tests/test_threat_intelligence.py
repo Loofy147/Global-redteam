@@ -1,6 +1,6 @@
 import pytest
 from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from src.global_red_team.models import Finding, TestCategory, Severity
+from src.global_red_team.models import Finding, SecurityTestCategory, Severity
 from src.global_red_team.config import Settings
 from src.global_red_team.reporting import ReportGenerator
 
@@ -18,7 +18,7 @@ def test_threat_intelligence_enrichment(settings):
     orchestrator = RedTeamOrchestrator(settings)
     finding = Finding(
         id="test-finding",
-        category=TestCategory.API_SECURITY,
+        category=SecurityTestCategory.API_SECURITY,
         severity=Severity.HIGH,
         title="Test Finding with Known CVE",
         description="This is a test finding with a known CVE.",

@@ -1,7 +1,7 @@
 import pytest
 from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
 from src.global_red_team.config import Settings
-from src.global_red_team.models import TestCategory
+from src.global_red_team.models import SecurityTestCategory
 
 
 def test_sast_integration():
@@ -13,7 +13,7 @@ def test_sast_integration():
 
     orchestrator.register_test_suite(
         name="SAST",
-        category=TestCategory.STATIC_ANALYSIS,
+        category=SecurityTestCategory.STATIC_ANALYSIS,
         tests=[orchestrator.run_sast_scan],
         description="AI-powered static analysis of the codebase.",
     )

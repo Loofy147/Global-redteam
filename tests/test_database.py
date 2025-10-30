@@ -2,7 +2,7 @@ import pytest
 import sqlite3
 from datetime import datetime, timedelta
 from src.global_red_team import database
-from src.global_red_team.models import Finding, TestCategory, Severity
+from src.global_red_team.models import Finding, SecurityTestCategory, Severity
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def test_save_and_get_finding(setup_database):
     """Tests that a finding can be saved and retrieved from the database."""
     finding = Finding(
         id="test-finding",
-        category=TestCategory.API_SECURITY,
+        category=SecurityTestCategory.API_SECURITY,
         severity=Severity.HIGH,
         title="Test Finding",
         description="This is a test finding.",
@@ -56,7 +56,7 @@ def test_close_old_findings(setup_database):
     """Tests that old findings are correctly closed."""
     finding = Finding(
         id="test-finding-to-close",
-        category=TestCategory.API_SECURITY,
+        category=SecurityTestCategory.API_SECURITY,
         severity=Severity.LOW,
         title="Old Finding",
         description="This is an old test finding.",

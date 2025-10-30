@@ -8,7 +8,7 @@ from enum import Enum
 from typing import List, Callable, Optional, Any
 
 
-class TestCategory(Enum):
+class SecurityTestCategory(Enum):
     """Categories of security tests"""
 
     PROPERTY_BASED = "property_based"
@@ -39,7 +39,7 @@ class Finding:
     """Represents a security finding"""
 
     id: str
-    category: TestCategory
+    category: SecurityTestCategory
     severity: Severity
     title: str
     description: str
@@ -59,7 +59,7 @@ class TestSuite:
     """A collection of related tests"""
 
     name: str
-    category: TestCategory
+    category: SecurityTestCategory
     tests: List[Callable]
     description: str = ""
     enabled: bool = True
