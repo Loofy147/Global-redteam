@@ -1,3 +1,4 @@
 PyJWT
 requests
 pytest
+pydantic-settings
