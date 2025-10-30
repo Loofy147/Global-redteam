@@ -87,7 +87,7 @@ class Mutator:
     """Intelligent mutation engine for fuzzing"""
 
     def __init__(self, seed: Optional[int] = None):
-        self.random = secrets.SystemRandom()
+        self.secure_random = secrets.SystemRandom()
         self.interesting_8bit = [-128, -1, 0, 1, 16, 32, 64, 100, 127]
         self.interesting_16bit = [
             -32768,
@@ -139,8 +139,8 @@ class Mutator:
         data_array = bytearray(data)
         for _ in range(num_flips):
             if len(data_array) > 0:
-                byte_idx = self.random.randint(0, len(data_array) - 1)
-                bit_idx = self.random.randint(0, 7)
+                byte_idx = self.secure_random.randint(0, len(data_array) - 1)
+                bit_idx = self.secure_random.randint(0, 7)
                 data_array[byte_idx] ^= 1 << bit_idx
         return bytes(data_array)
 
@@ -149,7 +149,7 @@ class Mutator:
         data_array = bytearray(data)
         for _ in range(num_flips):
             if len(data_array) > 0:
-                idx = self.random.randint(0, len(data_array) - 1)
+                idx = self.secure_random.randint(0, len(data_array) - 1)
                 data_array[idx] ^= 0xFF
         return bytes(data_array)
 
@@ -159,8 +159,8 @@ class Mutator:
             return data
 
         data_array = bytearray(data)
-        idx = self.random.randint(0, len(data_array) - 1)
-        delta = self.random.randint(-35, 35)
+        idx = self.secure_random.randint(0, len(data_array) - 1)
+        delta = self.secure_random.randint(-35, 35)
         data_array[idx] = (data_array[idx] + delta) % 256
         return bytes(data_array)
 
@@ -170,9 +170,9 @@ class Mutator:
             return data
 
         data_array = bytearray(data)
-        idx = self.random.randint(0, len(data_array) - 4)
+        idx = self.secure_random.randint(0, len(data_array) - 4)
 
-        value = self.random.choice(self.interesting_32bit)
+        value = self.secure_random.choice(self.interesting_32bit)
         # Little-endian encoding
         data_array[idx: idx + 4] = value.to_bytes(
             4, byteorder="little", signed=True
@@ -183,12 +183,12 @@ class Mutator:
     def dictionary_mutation(self, data: bytes) -> bytes:
         """Insert dictionary tokens"""
         data_array = bytearray(data)
-        token = self.random.choice(self.dictionary)
+        token = self.secure_random.choice(self.dictionary)
 
         if len(data_array) == 0:
             return token
 
-        idx = self.random.randint(0, len(data_array))
+        idx = self.secure_random.randint(0, len(data_array))
         data_array[idx:idx] = token
 
         return bytes(data_array)
@@ -196,10 +196,10 @@ class Mutator:
     def havoc_mutation(self, data: bytes, iterations: int = None) -> bytes:
         """Apply random mutations aggressively"""
         if iterations is None:
-            iterations = self.random.randint(10, 50)
+            iterations = self.secure_random.randint(10, 50)
 
         for _ in range(iterations):
-            strategy = self.random.choice(
+            strategy = self.secure_random.choice(
                 [
                     self.bit_flip,
                     self.byte_flip,
@@ -219,8 +219,8 @@ class Mutator:
         if len(data2) == 0:
             return data1
 
-        split1 = self.random.randint(0, len(data1))
-        split2 = self.random.randint(0, len(data2))
+        split1 = self.secure_random.randint(0, len(data1))
+        split2 = self.secure_random.randint(0, len(data2))
 
         return data1[:split1] + data2[split2:]
 
@@ -228,10 +228,10 @@ class Mutator:
         """Apply specific mutation strategy"""
         strategies = {
             MutationStrategy.BIT_FLIP: lambda: self.bit_flip(
-                data, self.random.randint(1, 8)
+                data, self.secure_random.randint(1, 8)
             ),
             MutationStrategy.BYTE_FLIP: lambda: self.byte_flip(
-                data, self.random.randint(1, 4)
+                data, self.secure_random.randint(1, 4)
             ),
             MutationStrategy.ARITHMETIC: lambda: self.arithmetic_mutation(data),
             MutationStrategy.INTERESTING_VALUES: lambda: self.interesting_value_mutation(
@@ -319,11 +319,11 @@ class CoverageGuidedFuzzer:
         """Select input from corpus for mutation (favor recent/interesting)"""
         # Favor inputs that found new coverage
         interesting = [inp for inp in self.corpus if inp.new_coverage]
-        if interesting and self.mutator.random.random() < 0.7:
-            return self.mutator.random.choice(interesting)
+        if interesting and self.mutator.secure_random.random() < 0.7:
+            return self.mutator.secure_random.choice(interesting)
 
         # Otherwise random selection
-        return self.mutator.random.choice(self.corpus)
+        return self.mutator.secure_random.choice(self.corpus)
 
     def fuzz_cycle(self) -> bool:
         """Single fuzzing iteration"""
@@ -335,10 +335,10 @@ class CoverageGuidedFuzzer:
         if len(self.corpus) < 2 and MutationStrategy.SPLICE in available_strategies:
             available_strategies.remove(MutationStrategy.SPLICE)
 
-        strategy = self.mutator.random.choice(available_strategies)
+        strategy = self.mutator.secure_random.choice(available_strategies)
 
         if strategy == MutationStrategy.SPLICE:
-            other = self.mutator.random.choice(self.corpus)
+            other = self.mutator.secure_random.choice(self.corpus)
             mutated = self.mutator.splice_mutation(parent.data, other.data)
         else:
             mutated = self.mutator.mutate(parent.data, strategy)

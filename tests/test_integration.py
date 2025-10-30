@@ -34,7 +34,7 @@ def test_integration(vulnerable_app):
     settings = Settings(
         target_system="Vulnerable Flask App",
         api_url=vulnerable_app,
-        auth_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w",
+        auth_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w",  # nosec
     )
     orchestrator = RedTeamOrchestrator(settings)
 
