@@ -68,8 +68,10 @@ class RedTeamOrchestrator:
     def add_finding_from_result(self, result, category):
         """Add a finding from a test result object"""
         if not result.passed:
+            unique_str = f"{result.vulnerability_type.value}:{result.endpoint.path}:{result.evidence}"
+            finding_id = f"api-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
             finding = Finding(
-                id=f"{result.vulnerability_type.value}-{hashlib.sha1(str(result.evidence).encode()).hexdigest()[:10]}",
+                id=finding_id,
                 category=category,
                 severity=Severity(result.severity),
                 title=f"Vulnerability: {result.vulnerability_type.value}",
@@ -133,8 +135,9 @@ class RedTeamOrchestrator:
 
         if fuzzer.crashes:
             for crash in fuzzer.crashes:
+                finding_id = f"fuzz-{hashlib.sha256(crash.input_data).hexdigest()[:16]}"
                 finding = Finding(
-                    id=f"FUZZ-{hashlib.sha1(crash.input_data).hexdigest()}",
+                    id=finding_id,
                     category=SecurityTestCategory.FUZZING,
                     severity=Severity.HIGH,
                     title="Fuzzer discovered a crash",
@@ -159,8 +162,10 @@ class RedTeamOrchestrator:
         property_tester.test_injection_resistance(vulnerable_sql_query)
         if property_tester.failures:
             for failure in property_tester.failures:
+                unique_str = f"{failure.vulnerability_type.value}:{failure.input_value}"
+                finding_id = f"prop-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
                 finding = Finding(
-                    id=f"PROP-{failure.vulnerability_type.value}",
+                    id=finding_id,
                     category=SecurityTestCategory.PROPERTY_BASED,
                     severity=Severity.HIGH,
                     title=f"Property test failed: {failure.vulnerability_type.value}",
@@ -176,14 +181,18 @@ class RedTeamOrchestrator:
     def _convert_code_vuln_to_finding(self, vuln: Dict) -> Finding:
         """Converts a CodeVulnerability object to a Finding object."""
         pattern = vuln["pattern"]
+        code_snippet = vuln.get('code_snippet', '')
+        unique_str = f"{vuln['file_path']}:{vuln['line_number']}:{pattern.value}:{code_snippet}"
+        finding_id = f"sast-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
+
         return Finding(
-            id=f"sast-{hashlib.sha1(f'{vuln['file_path']}{vuln['line_number']}{pattern.value}'.encode()).hexdigest()[:10]}",
+            id=finding_id,
             category=SecurityTestCategory.STATIC_ANALYSIS,
             severity=Severity(vuln["severity"]),
-            title=f"{pattern.value.replace('_', ' ').title()} in {vuln['file_path']}",
+            title=f"{pattern.value.replace('_', ' ').title()} in {os.path.basename(vuln['file_path'])}",
             description=vuln["explanation"],
             affected_component=f"{vuln['file_path']}:{vuln['line_number']}",
-            evidence=vuln['code_snippet'],
+            evidence=code_snippet,
             remediation=vuln['remediation'],
         )
 
