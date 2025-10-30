@@ -480,7 +480,7 @@ if __name__ == "__main__":
         """Simulated vulnerable SQL function"""
         # WARNING: This is intentionally vulnerable for demonstration
         query = f"SELECT * FROM users WHERE username = '{user_input}'"
-        return query
+        return query  # nosec
 
     def vulnerable_balance_update(amount: int) -> int:
         """Simulated race condition in balance update"""

@@ -584,8 +584,11 @@ class APISecurityTester:
         return "\n".join(report)
 
 
+from .config import Settings
+
 # Example usage
 if __name__ == "__main__":
+    settings = Settings()
     # Define API endpoints to test
     endpoints = [
         APIEndpoint(path="/api/users/{id}", method="GET", requires_auth=True),
@@ -602,7 +605,7 @@ if __name__ == "__main__":
     # Initialize tester
     tester = APISecurityTester(
         base_url="https://api.example.com",
-        auth_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test",
+        auth_token=settings.example_auth_token,
     )
 
     # Run comprehensive tests
