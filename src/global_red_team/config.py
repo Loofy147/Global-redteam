@@ -47,11 +47,3 @@ class Settings(BaseSettings):
         "./vulnerable_app", json_schema_extra={"env": "STATIC_ANALYSIS_PATH"}
     )
     fuzzing: FuzzingSettings = FuzzingSettings()
-    example_auth_token: str = Field(
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.test",
-        json_schema_extra={"env": "EXAMPLE_AUTH_TOKEN"},
-    )
-    test_auth_token: str = Field(
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w",
-        json_schema_extra={"env": "TEST_AUTH_TOKEN"},
-    )

@@ -35,7 +35,7 @@ def test_threat_intelligence_enrichment(settings):
 
     assert enriched_finding.severity == Severity.CRITICAL
     assert enriched_finding.threat_intel is not None
-    assert "Log4j" in enriched_finding.threat_intel["name"]
+    assert "Log4j" in enriched_finding.threat_intel["summary"]
 
     report_generator = ReportGenerator(
         orchestrator.target_system, orchestrator.findings, orchestrator.stats, orchestrator.test_suites

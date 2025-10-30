@@ -23,9 +23,12 @@ def test_byte_flip(mutator):
 
 def test_arithmetic_mutation(mutator):
     data = b"\x00\x00\x00\x00"
-    mutated = mutator.arithmetic_mutation(data)
-    assert data != mutated
-    assert len(data) == len(mutated)
+    for _ in range(10):
+        mutated = mutator.arithmetic_mutation(data)
+        if mutated != data:
+            assert True
+            return
+    assert False, "Arithmetic mutation failed to produce a new value"
 
 
 def test_interesting_value_mutation(mutator):

@@ -4,7 +4,7 @@ import time
 import threading
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "your-secret-key"  # nosec
+app.config["SECRET_KEY"] = "your-secret-key"
 
 # --- In-memory database ---
 users = {
