@@ -54,6 +54,14 @@ def admin_required(f):
     return decorated_function
 
 
+def login_required(f):
+    def decorated_function(*args, **kwargs):
+        if not g.user:
+            return jsonify({"error": "Login required"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 # --- Vulnerable Endpoints ---
 
 
@@ -64,8 +72,9 @@ def login():
         data = LoginRequest(**request.get_json())
     except ValidationError as e:
         return jsonify({"error": e.errors()}), 400
+
     for user_id, user in users.items():
-        if user["username"] == username and user["password"] == password:
+        if user["username"] == data.username and user["password"] == data.password:
             token = jwt.encode(
                 {"user_id": user_id}, app.config["SECRET_KEY"], algorithm="HS256"
             )
@@ -74,12 +83,17 @@ def login():
 
 
 @app.route("/api/users/<int:user_id>", methods=["GET"])
+@login_required
 def get_user(user_id):
     """Vulnerable to IDOR/BOLA - no authorization check"""
+    if g.user["user_id"] != user_id and not g.user["is_admin"]:
+        return jsonify({"error": "Unauthorized"}), 403
     user = users.get(user_id)
     if user:
         # Vulnerable to excessive data exposure (returns password)
-        return jsonify(user)
+        safe_user = user.copy()
+        del safe_user["password"]
+        return jsonify(safe_user)
     return jsonify({"error": "User not found"}), 404
 
 
@@ -90,15 +104,18 @@ def get_all_users():
     return jsonify(users)
 
 
+import html
+
 @app.route("/api/search", methods=["GET"])
 def search():
     """Vulnerable to injection"""
     query = request.args.get("q", "")
     # In a real app, this might be a database query
-    return jsonify({"message": f"Search results for: {query}"})
+    return jsonify({"message": f"Search results for: {html.escape(query)}"})
 
 
 @app.route("/api/payments/withdraw", methods=["POST"])
+@login_required
 def withdraw():
     """Vulnerable to a race condition (double-spending)"""
     try:
@@ -106,21 +123,21 @@ def withdraw():
     except ValidationError as e:
         return jsonify({"error": e.errors()}), 400
     amount = data.amount
-    user_id = g.user["user_id"] if g.user else 1  # default to admin for testing
+    user_id = g.user["user_id"]
 
-    # INTENTIONALLY VULNERABLE: No lock to protect against race conditions
-    current_balance = users[user_id]["balance"]
-    time.sleep(0.1)  # Simulate processing time to widen the race window
-    if current_balance >= amount:
-        users[user_id]["balance"] -= amount
-        return jsonify(
-            {
-                "message": "Withdrawal successful",
-                "new_balance": users[user_id]["balance"],
-            }
-        )
-    else:
-        return jsonify({"error": "Insufficient funds"}), 400
+    with balance_lock:
+        current_balance = users[user_id]["balance"]
+        time.sleep(0.1)  # Simulate processing time to widen the race window
+        if current_balance >= amount:
+            users[user_id]["balance"] -= amount
+            return jsonify(
+                {
+                    "message": "Withdrawal successful",
+                    "new_balance": users[user_id]["balance"],
+                }
+            )
+        else:
+            return jsonify({"error": "Insufficient funds"}), 400
 
 
 # --- Health Check and Metrics ---
@@ -144,10 +161,6 @@ def metrics():
     )
 
 
-@app.before_first_request
-def before_first_request():
-    app.start_time = time.time()
-
-
 if __name__ == "__main__":
+    app.start_time = time.time()
     app.run(debug=True, port=5000)

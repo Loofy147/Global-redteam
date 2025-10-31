@@ -15,7 +15,9 @@ from .red_team_race_detector import RaceConditionDetector
 from .reporting import ReportGenerator
 from .models import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from .config import Settings
+from pydantic import ValidationError
 import os
+import sys
 from .threat_intelligence import ThreatIntelligence
 from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerability, VulnerabilityPattern
 from typing import Dict, List, Callable, Optional
@@ -390,25 +392,20 @@ class RedTeamOrchestrator:
 
 
 if __name__ == "__main__":
-    settings = Settings()
-
     parser = argparse.ArgumentParser(description="Red Team Orchestrator")
     parser.add_argument(
         "--target",
         type=str,
-        default=settings.target_system,
         help="Target system for assessment",
     )
     parser.add_argument(
         "--api-url",
         type=str,
-        default=settings.api_url,
         help="Base URL for API testing",
     )
     parser.add_argument(
         "--auth-token",
         type=str,
-        default=settings.auth_token,
         help="Auth token for API testing",
     )
     parser.add_argument(
@@ -423,17 +420,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--swagger",
         type=str,
-        default=settings.swagger_file,
         help="Path to Swagger/OpenAPI file for API discovery",
     )
 
     args = parser.parse_args()
 
+    try:
+        settings_fields = Settings.model_fields.keys()
+        settings_args = {k: v for k, v in vars(args).items() if k in settings_fields and v is not None}
+        settings = Settings(**settings_args)
+    except ValidationError as e:
+        print(f"Error: Configuration validation failed:\n{e}", file=sys.stderr)
+        sys.exit(1)
+
     # Update settings from command line arguments
-    settings.target_system = args.target
-    settings.api_url = args.api_url
-    settings.auth_token = args.auth_token
-    settings.swagger_file = args.swagger
+    settings.target_system = args.target if args.target else settings.target_system
 
     orchestrator = RedTeamOrchestrator(settings)
 

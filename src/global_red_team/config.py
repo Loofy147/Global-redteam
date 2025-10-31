@@ -47,13 +47,6 @@ class Settings(BaseSettings):
     )
     fuzzing: FuzzingSettings = FuzzingSettings()
 
-    def __init__(self, **values):
-        try:
-            super().__init__(**values)
-        except ValidationError as e:
-            print(f"Error: Configuration validation failed:\n{e}", file=sys.stderr)
-            sys.exit(1)
-
     @validator("auth_token")
     def validate_auth_token(cls, v):
         """Ensure token is not a default/example"""
