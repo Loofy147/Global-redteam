@@ -7,7 +7,7 @@ from src.global_red_team.config import Settings
 @pytest.fixture
 def settings():
     """Returns a default settings object for testing."""
-    return Settings(auth_token="a_valid_token_that_is_long_enough")
+    return Settings(auth_token="a_valid_token_that_is_long_enough")  # nosec
 
 
 def test_register_test_suite(settings):

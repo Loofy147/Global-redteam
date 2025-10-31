@@ -1,3 +1,5 @@
+import os
+from functools import wraps
 from flask import Flask, request, jsonify, g
 import jwt
 import time
@@ -6,7 +8,8 @@ from models import LoginRequest, WithdrawRequest
 from pydantic import ValidationError
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "your-secret-key"
+# In production, this should be set as an environment variable
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key")
 
 # --- In-memory database ---
 users = {
@@ -33,31 +36,42 @@ balance_lock = threading.Lock()
 @app.before_request
 def before_request():
     g.user = None
+    g.auth_error = None  # Store potential error
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
             decoded = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
-            g.user = users.get(decoded["user_id"])
+            user = users.get(decoded["user_id"])
+            if not user:
+                g.auth_error = ({"error": "User from token not found"}, 401)
+            g.user = user
         except jwt.ExpiredSignatureError:
-            pass  # Invalid token
+            g.auth_error = ({"error": "Token has expired"}, 401)
         except jwt.InvalidTokenError:
-            pass  # Invalid token
+            g.auth_error = ({"error": "Invalid token"}, 401)
 
 
 def admin_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not g.user or not g.user.get("is_admin"):
+        if g.auth_error:
+            return jsonify(g.auth_error[0]), g.auth_error[1]
+        if not g.user:
+            return jsonify({"error": "Authentication required"}), 401
+        if not g.user.get("is_admin"):
             return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
-
     return decorated_function
 
 
 def login_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
+        if g.auth_error:
+            return jsonify(g.auth_error[0]), g.auth_error[1]
         if not g.user:
-            return jsonify({"error": "Login required"}), 401
+            return jsonify({"error": "Authentication required"}), 401
         return f(*args, **kwargs)
     return decorated_function
 
@@ -86,11 +100,13 @@ def login():
 @login_required
 def get_user(user_id):
     """Vulnerable to IDOR/BOLA - no authorization check"""
+    # Authorization check: only admin or the user themselves can access the data
     if g.user["user_id"] != user_id and not g.user["is_admin"]:
-        return jsonify({"error": "Unauthorized"}), 403
+        return jsonify({"error": "Unauthorized to access this resource"}), 403
+
     user = users.get(user_id)
     if user:
-        # Vulnerable to excessive data exposure (returns password)
+        # Prevent excessive data exposure
         safe_user = user.copy()
         del safe_user["password"]
         return jsonify(safe_user)
@@ -101,17 +117,39 @@ def get_user(user_id):
 @admin_required
 def get_all_users():
     """Admin-only endpoint"""
-    return jsonify(users)
+    safe_users = {}
+    for user_id, user_data in users.items():
+        safe_user = user_data.copy()
+        del safe_user["password"]
+        safe_users[user_id] = safe_user
+    return jsonify(safe_users)
 
 
-import html
+def _safe_search_users(query):
+    """
+    Simulates a safe, parameterized search against the in-memory user data.
+    """
+    results = []
+    # Case-insensitive search in username
+    for _, user_data in users.items():
+        if query.lower() in user_data["username"].lower():
+            safe_user = user_data.copy()
+            del safe_user["password"]  # Don't expose sensitive data
+            results.append(safe_user)
+    return results
+
 
 @app.route("/api/search", methods=["GET"])
 def search():
-    """Vulnerable to injection"""
+    """Previously vulnerable to injection, now performs a safe search."""
     query = request.args.get("q", "")
-    # In a real app, this might be a database query
-    return jsonify({"message": f"Search results for: {html.escape(query)}"})
+    if not query or len(query) < 2:
+        return jsonify({"error": "A search query of at least 2 characters is required"}), 400
+
+    # Simulate a safe, parameterized query
+    results = _safe_search_users(query)
+
+    return jsonify({"results": results})
 
 
 @app.route("/api/payments/withdraw", methods=["POST"])
@@ -125,9 +163,12 @@ def withdraw():
     amount = data.amount
     user_id = g.user["user_id"]
 
+    # This lock prevents a race condition where two requests could withdraw
+    # funds simultaneously, leading to a negative balance.
     with balance_lock:
         current_balance = users[user_id]["balance"]
-        time.sleep(0.1)  # Simulate processing time to widen the race window
+        # In a real app, this check-then-set logic should be an atomic
+        # database transaction (e.g., SELECT FOR UPDATE).
         if current_balance >= amount:
             users[user_id]["balance"] -= amount
             return jsonify(

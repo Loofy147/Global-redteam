@@ -213,7 +213,7 @@ class APISecurityTester:
             try:
                 # Decode without verification
                 decoded = jwt.decode(
-                    self.auth_token, options={"verify_signature": False}
+                    self.auth_token, algorithms=["HS256"], options={"verify_signature": False}
                 )
 
                 # Try to create token with alg=none

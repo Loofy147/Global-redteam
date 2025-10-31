@@ -305,7 +305,7 @@ class SecureDatabase:
             # Safe to use f-string for field name (validated above)
             # But use parameterized query for search term
             query = f"SELECT * FROM findings WHERE {field} LIKE ? ORDER BY severity, last_seen DESC"
-            cursor.execute(query, (f"%{search_term}%",))
+            cursor.execute(query, (f"%{search_term}%",))  # nosec
 
             return [dict(row) for row in cursor.fetchall()]
 
