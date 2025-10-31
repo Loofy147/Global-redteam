@@ -3,19 +3,27 @@ from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
 from src.global_red_team.models import Finding, SecurityTestCategory, Severity
 from src.global_red_team.config import Settings
 from src.global_red_team.reporting import ReportGenerator
-
+from src.global_red_team.database import SecureDatabase
 
 @pytest.fixture
 def settings():
     """Returns a default settings object for testing."""
     return Settings()
 
+@pytest.fixture
+def orchestrator(settings):
+    """
+    Provides a RedTeamOrchestrator instance with an in-memory database.
+    """
+    orchestrator = RedTeamOrchestrator(settings)
+    orchestrator.db = SecureDatabase(db_path=":memory:")
+    return orchestrator
 
-def test_threat_intelligence_enrichment(settings):
+
+def test_threat_intelligence_enrichment(orchestrator):
     """
     Tests that a finding with a known CVE is enriched with threat intelligence.
     """
-    orchestrator = RedTeamOrchestrator(settings)
     finding = Finding(
         id="test-finding",
         category=SecurityTestCategory.API_SECURITY,
@@ -38,7 +46,7 @@ def test_threat_intelligence_enrichment(settings):
     assert "Log4j" in enriched_finding.threat_intel["summary"]
 
     report_generator = ReportGenerator(
-        orchestrator.target_system, orchestrator.findings, orchestrator.stats, orchestrator.test_suites
+        orchestrator.target_system, orchestrator.findings, orchestrator.stats, orchestrator.test_suites, orchestrator.db
     )
     executive_summary = report_generator.generate_executive_summary()
     technical_report = report_generator.generate_technical_report()

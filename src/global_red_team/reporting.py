@@ -5,9 +5,10 @@ generating all the reports for the Red Team Orchestrator.
 
 import json
 import csv
+import hashlib
 from typing import List
-from . import database as db
-from .models import Finding, Severity, TestSuite
+from .database import SecureDatabase
+from .models import Finding, Severity, TestSuite, generate_finding_hash
 
 
 class ReportGenerator:
@@ -21,11 +22,13 @@ class ReportGenerator:
         findings: List[Finding],
         stats: dict,
         test_suites: List[TestSuite],
+        db: SecureDatabase,
     ):
         self.target_system = target_system
         self.findings = findings
         self.stats = stats
         self.test_suites = test_suites
+        self.db = db
 
     def calculate_risk_score(self) -> float:
         """
@@ -161,9 +164,8 @@ class ReportGenerator:
                 report.append("   " + "-" * 76)
 
                 for i, finding in enumerate(findings, 1):
-                    db_finding = db.get_finding_by_hash(
-                        db.generate_finding_hash(finding)
-                    )
+                    finding_hash = generate_finding_hash(finding)
+                    db_finding = self.db.get_finding_by_hash(finding_hash)
                     status = "New"
                     if db_finding:
                         if db_finding["is_regression"]:

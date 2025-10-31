@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List, Callable, Optional, Any
+import hashlib
 
 
 class SecurityTestCategory(Enum):
@@ -63,3 +64,9 @@ class TestSuite:
     tests: List[Callable]
     description: str = ""
     enabled: bool = True
+
+
+def generate_finding_hash(finding: Finding) -> str:
+    """Generates a unique hash for a finding to prevent duplicates."""
+    unique_string = f"{finding.category.value}|{finding.severity.value}|{finding.title}|{finding.affected_component}"
+    return hashlib.sha256(unique_string.encode()).hexdigest()
