@@ -3,8 +3,9 @@ This module contains the Pydantic settings model for the Red Team Orchestrator.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, ValidationError
 from typing import Optional, List
+import sys
 
 
 class FuzzingSettings(BaseSettings):
@@ -47,3 +48,10 @@ class Settings(BaseSettings):
         "./vulnerable_app", json_schema_extra={"env": "STATIC_ANALYSIS_PATH"}
     )
     fuzzing: FuzzingSettings = FuzzingSettings()
+
+    def __init__(self, **values):
+        try:
+            super().__init__(**values)
+        except ValidationError as e:
+            print(f"Error: Configuration validation failed:\n{e}", file=sys.stderr)
+            sys.exit(1)
