@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, g
 import jwt
 import time
 import threading
+from models import LoginRequest, WithdrawRequest
+from pydantic import ValidationError
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "your-secret-key"
@@ -58,9 +60,10 @@ def admin_required(f):
 @app.route("/api/login", methods=["POST"])
 def login():
     """Vulnerable to authentication bypass via JWT alg=none"""
-    data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
+    try:
+        data = LoginRequest(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"error": e.errors()}), 400
     for user_id, user in users.items():
         if user["username"] == username and user["password"] == password:
             token = jwt.encode(
@@ -98,8 +101,11 @@ def search():
 @app.route("/api/payments/withdraw", methods=["POST"])
 def withdraw():
     """Vulnerable to a race condition (double-spending)"""
-    data = request.get_json()
-    amount = data.get("amount")
+    try:
+        data = WithdrawRequest(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"error": e.errors()}), 400
+    amount = data.amount
     user_id = g.user["user_id"] if g.user else 1  # default to admin for testing
 
     # INTENTIONALLY VULNERABLE: No lock to protect against race conditions
@@ -115,6 +121,32 @@ def withdraw():
         )
     else:
         return jsonify({"error": "Insufficient funds"}), 400
+
+
+# --- Health Check and Metrics ---
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({"status": "ok"})
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    """Metrics endpoint"""
+    return jsonify(
+        {
+            "users_total": len(users),
+            "requests_total": len(threading.enumerate()),
+            "uptime_seconds": time.time() - app.start_time,
+        }
+    )
+
+
+@app.before_first_request
+def before_first_request():
+    app.start_time = time.time()
 
 
 if __name__ == "__main__":
