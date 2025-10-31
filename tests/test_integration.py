@@ -35,6 +35,7 @@ def test_integration(vulnerable_app):
         target_system="Vulnerable Flask App",
         api_url=vulnerable_app,
         auth_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxfQ.rA-b_t_Bw_j_B-j_b-r_A-B_w",  # nosec
+        rate_limit=100,
     )
     orchestrator = RedTeamOrchestrator(settings)
 
@@ -42,6 +43,7 @@ def test_integration(vulnerable_app):
         api_tester = APISecurityTester(
             base_url=orchestrator.settings.api_url,
             auth_token=orchestrator.settings.auth_token,
+            rate_limit=orchestrator.settings.rate_limit,
         )
         endpoints = [
             APIEndpoint(path="/api/users/2", method="GET"),

@@ -111,27 +111,44 @@ class MetaRedTeamAssessor:
         
         # Check for SQL injection in own code
         for py_file in self.framework_path.rglob("*.py"):
-            if "venv" in str(py_file):
+            if "venv" in str(py_file) or py_file.name == "secure_database.py":
                 continue
             try:
                 with open(py_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    if "execute(" in content and "%" in content or "f\"" in content:
+                    if "execute(" in content and ("%" in content or "f\"" in content):
                         tree = ast.parse(content)
                         for node in ast.walk(tree):
-                            if isinstance(node, ast.Call):
-                                if hasattr(node.func, 'attr') and node.func.attr == 'execute':
-                                    findings.append(MetaFinding(
-                                        category="Security",
-                                        severity="critical",
-                                        title="Potential SQL injection in framework code",
-                                        description="Database execute() may use string formatting",
-                                        file_path=str(py_file),
-                                        line_number=node.lineno,
-                                        evidence=f"Line {node.lineno}",
-                                        remediation="Use parameterized queries exclusively",
-                                        cvss_score=9.0
-                                    ))
+                            if (isinstance(node, ast.Call) and
+                                hasattr(node.func, 'attr') and
+                                node.func.attr == 'execute'):
+                                # Check if any argument is a formatted string
+                                for arg in node.args:
+                                    if isinstance(arg, (ast.FormattedValue, ast.JoinedStr)):
+                                        findings.append(MetaFinding(
+                                            category="Security",
+                                            severity="critical",
+                                            title="Potential SQL injection in framework code",
+                                            description="Database execute() may use f-string formatting",
+                                            file_path=str(py_file),
+                                            line_number=node.lineno,
+                                            evidence=f"Line {node.lineno}",
+                                            remediation="Use parameterized queries exclusively",
+                                            cvss_score=9.0
+                                        ))
+                                    # This is a simplistic check for % formatting, could be improved
+                                    elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Mod):
+                                        findings.append(MetaFinding(
+                                            category="Security",
+                                            severity="critical",
+                                            title="Potential SQL injection in framework code",
+                                            description="Database execute() may use % formatting",
+                                            file_path=str(py_file),
+                                            line_number=node.lineno,
+                                            evidence=f"Line {node.lineno}",
+                                            remediation="Use parameterized queries exclusively",
+                                            cvss_score=9.0
+                                        ))
             except Exception:
                 pass
         

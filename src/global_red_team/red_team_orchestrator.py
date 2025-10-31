@@ -7,15 +7,17 @@ import json
 import time
 import hashlib
 import argparse
-from . import database as db
+from .database import SecureDatabase
 from .red_team_api_tester import APISecurityTester, APIEndpoint
 from .red_team_fuzzer import CoverageGuidedFuzzer
 from .red_team_property_testing import PropertyTester
 from .red_team_race_detector import RaceConditionDetector
 from .reporting import ReportGenerator
-from .models import Finding, Severity, SecurityTestCategory, TestSuite
+from .models import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from .config import Settings
+from pydantic import ValidationError
 import os
+import sys
 from .threat_intelligence import ThreatIntelligence
 from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerability, VulnerabilityPattern
 from typing import Dict, List, Callable, Optional
@@ -32,12 +34,11 @@ class RedTeamOrchestrator:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.target_system = settings.target_system
+        self.db = SecureDatabase()
         self.findings: List[Finding] = []
         self.test_suites: List[TestSuite] = []
         self.execution_log: List[Dict] = []
-        self.threat_intelligence = ThreatIntelligence(
-            "src/global_red_team/known_exploited_vulnerabilities.json"
-        )
+        self.threat_intelligence = ThreatIntelligence()
 
         self.stats = {
             "total_tests": 0,
@@ -85,7 +86,7 @@ class RedTeamOrchestrator:
     def run_api_tests(self):
         """Run the API security test suite"""
         api_tester = APISecurityTester(
-            base_url=self.settings.api_url, auth_token=self.settings.auth_token
+            base_url=self.settings.api_url, auth_token=self.settings.auth_token, rate_limit=self.settings.rate_limit
         )
 
         if self.settings.swagger_file:
@@ -262,7 +263,18 @@ class RedTeamOrchestrator:
                 finding.threat_intel = threat_info
 
         self.findings.append(finding)
-        db.save_finding(finding)
+        finding_hash = generate_finding_hash(finding)
+        self.db.save_finding(
+            finding_id=finding.id,
+            finding_hash=finding_hash,
+            category=finding.category.value,
+            severity=finding.severity.value,
+            title=finding.title,
+            description=finding.description,
+            affected_component=finding.affected_component,
+            evidence=str(finding.evidence),
+            remediation=finding.remediation
+        )
 
         # Update statistics
         if finding.severity == Severity.CRITICAL:
@@ -340,7 +352,7 @@ class RedTeamOrchestrator:
 
         self.stats["end_time"] = datetime.now()
 
-        db.close_old_findings(self.stats["start_time"])
+        self.db.close_old_findings(self.stats["start_time"])
 
         logger.info("\n" + "=" * 80)
         logger.info("Assessment Complete")
@@ -356,7 +368,7 @@ class RedTeamOrchestrator:
         logger.info(f"  Passed: {self.stats['tests_passed']}")
         logger.info(f"  Failed: {self.stats['tests_failed']}")
 
-        summary = db.get_findings_summary()
+        summary = self.db.get_summary_statistics()
         new_findings = (
             summary.get("critical_new", 0)
             + summary.get("high_new", 0)
@@ -380,25 +392,20 @@ class RedTeamOrchestrator:
 
 
 if __name__ == "__main__":
-    settings = Settings()
-
     parser = argparse.ArgumentParser(description="Red Team Orchestrator")
     parser.add_argument(
         "--target",
         type=str,
-        default=settings.target_system,
         help="Target system for assessment",
     )
     parser.add_argument(
         "--api-url",
         type=str,
-        default=settings.api_url,
         help="Base URL for API testing",
     )
     parser.add_argument(
         "--auth-token",
         type=str,
-        default=settings.auth_token,
         help="Auth token for API testing",
     )
     parser.add_argument(
@@ -413,17 +420,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--swagger",
         type=str,
-        default=settings.swagger_file,
         help="Path to Swagger/OpenAPI file for API discovery",
     )
 
     args = parser.parse_args()
 
+    try:
+        settings_fields = Settings.model_fields.keys()
+        settings_args = {k: v for k, v in vars(args).items() if k in settings_fields and v is not None}
+        settings = Settings(**settings_args)
+    except ValidationError as e:
+        print(f"Error: Configuration validation failed:\n{e}", file=sys.stderr)
+        sys.exit(1)
+
     # Update settings from command line arguments
-    settings.target_system = args.target
-    settings.api_url = args.api_url
-    settings.auth_token = args.auth_token
-    settings.swagger_file = args.swagger
+    settings.target_system = args.target if args.target else settings.target_system
 
     orchestrator = RedTeamOrchestrator(settings)
 
@@ -458,8 +469,8 @@ if __name__ == "__main__":
     if args.dashboard:
         # Note: The dashboard functionality might need to be moved to the reporting module as well
         # For now, we'll leave it here.
-        summary = db.get_findings_summary()
-        open_findings = db.get_open_findings()
+        summary = orchestrator.db.get_summary_statistics()
+        open_findings = orchestrator.db.get_findings_by_status('new') + orchestrator.db.get_findings_by_status('open')
 
         logger.info("=" * 80)
         logger.info("SECURITY DASHBOARD")
@@ -515,6 +526,7 @@ if __name__ == "__main__":
             orchestrator.findings,
             orchestrator.stats,
             orchestrator.test_suites,
+            orchestrator.db,
         )
 
         logger.info("\n" + report_generator.generate_executive_summary())

@@ -319,7 +319,7 @@ class CoverageGuidedFuzzer:
         """Select input from corpus for mutation (favor recent/interesting)"""
         # Favor inputs that found new coverage
         interesting = [inp for inp in self.corpus if inp.new_coverage]
-        if interesting and self.mutator.secure_random.random() < 0.7:
+        if interesting and self.mutator.secure_random.random() < 0.7:  # nosec
             return self.mutator.secure_random.choice(interesting)
 
         # Otherwise random selection

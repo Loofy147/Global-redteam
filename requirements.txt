@@ -1,4 +1,4 @@
-PyJWT
-requests
-pytest
-pydantic-settings
+PyJWT==2.10.1
+requests==2.32.5
+pytest==8.4.2
+pydantic-settings==2.11.0
