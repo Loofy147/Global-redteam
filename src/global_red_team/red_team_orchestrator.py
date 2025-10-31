@@ -84,7 +84,7 @@ class RedTeamOrchestrator:
     def run_api_tests(self):
         """Run the API security test suite"""
         api_tester = APISecurityTester(
-            base_url=self.settings.api_url, auth_token=self.settings.auth_token
+            base_url=self.settings.api_url, auth_token=self.settings.auth_token, rate_limit=self.settings.rate_limit
         )
 
         if self.settings.swagger_file:

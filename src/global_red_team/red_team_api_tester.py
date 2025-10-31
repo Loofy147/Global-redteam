@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import itertools
+from .rate_limiter import RateLimiter
 
 
 class APIVulnerabilityType(Enum):
@@ -57,12 +58,13 @@ class APITestResult:
 class APISecurityTester:
     """Comprehensive API security testing framework"""
 
-    def __init__(self, base_url: str, auth_token: Optional[str] = None):
+    def __init__(self, base_url: str, auth_token: Optional[str] = None, rate_limit: int = 10):
         self.base_url = base_url.rstrip("/")
         self.auth_token = auth_token
         self.results: List[APITestResult] = []
         self.request_history: List[Dict] = []
         self.session = requests.Session()
+        self.rate_limiter = RateLimiter(max_requests=rate_limit, time_window=1)
 
     def _make_request(
         self,
@@ -71,6 +73,7 @@ class APISecurityTester:
         override_body: Optional[Dict] = None,
     ) -> Dict:
         """Perform an HTTP request"""
+        self.rate_limiter.acquire()
         headers = endpoint.headers.copy()
         if override_headers:
             headers.update(override_headers)

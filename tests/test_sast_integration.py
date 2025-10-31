@@ -8,7 +8,7 @@ def test_sast_integration():
     """
     Tests that the SAST suite can be run through the orchestrator.
     """
-    settings = Settings(target_system="./vulnerable_app")
+    settings = Settings(target_system="./vulnerable_app", auth_token="a_valid_token_that_is_long_enough")
     orchestrator = RedTeamOrchestrator(settings)
 
     orchestrator.register_test_suite(

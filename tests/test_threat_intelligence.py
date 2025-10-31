@@ -8,7 +8,7 @@ from src.global_red_team.database import SecureDatabase
 @pytest.fixture
 def settings():
     """Returns a default settings object for testing."""
-    return Settings()
+    return Settings(auth_token="a_valid_token_that_is_long_enough")
 
 @pytest.fixture
 def orchestrator(settings):
