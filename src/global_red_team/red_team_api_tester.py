@@ -37,7 +37,7 @@ class APIEndpoint:
     path: str
     method: str
     requires_auth: bool = True
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    params: Optional[Dict[str, Any]] = None
     headers: Dict[str, str] = field(default_factory=dict)
     body: Optional[Dict] = None
 
@@ -440,26 +440,22 @@ class APISecurityTester:
 
         for injection_type, payloads in injection_payloads.items():
             for payload in payloads:
-                # Test in query parameters
-                test_endpoint = APIEndpoint(
-                    path=f"{endpoint.path}?q={payload}",
-                    method=endpoint.method,
-                    requires_auth=endpoint.requires_auth,
-                )
-
-                try:
-                    response = self._make_request(test_endpoint)
-
-                    # Check for injection success indicators
-                    response_str = json.dumps(response).lower()
-                    indicators = ["error", "exception", "syntax", "root:", "admin"]
-
-                    if any(ind in response_str for ind in indicators):
-                        vulnerabilities.append(f"{injection_type}: {payload}")
-                except Exception as e:
-                    vulnerabilities.append(
-                        f"{injection_type}: {payload} (caused exception)"
-                    )
+                # Test in query parameters, if applicable
+                if endpoint.params is not None:
+                    for param_name in endpoint.params:
+                        test_endpoint = APIEndpoint(
+                            path=f"{endpoint.path}?{param_name}={payload}",
+                            method=endpoint.method,
+                            requires_auth=endpoint.requires_auth,
+                        )
+                        try:
+                            response = self._make_request(test_endpoint)
+                            response_str = json.dumps(response).lower()
+                            indicators = ["error", "exception", "syntax", "root:", "admin"]
+                            if any(ind in response_str for ind in indicators):
+                                vulnerabilities.append(f"{injection_type}: {payload} in param {param_name}")
+                        except Exception as e:
+                            vulnerabilities.append(f"{injection_type}: {payload} in param {param_name} (caused exception)")
 
                 # Test in body
                 if endpoint.body:
