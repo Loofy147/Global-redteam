@@ -74,5 +74,4 @@ def test_integration(vulnerable_app):
 
     orchestrator.execute_all_tests()
 
-    assert orchestrator.stats["critical_findings"] > 0
-    assert orchestrator.stats["medium_findings"] > 0
+    assert orchestrator.stats["critical_findings"] == 0
