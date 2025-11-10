@@ -1,7 +1,7 @@
 import pytest
-from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from src.global_red_team.models import Finding, SecurityTestCategory, Severity, TestSuite
-from src.global_red_team.config import Settings
+from src.redteam.core.orchestrator import RedTeamOrchestrator
+from src.redteam.core.finding import Finding, SecurityTestCategory, Severity, TestSuite
+from src.redteam.utils.config import Settings
 
 
 @pytest.fixture

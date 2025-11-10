@@ -7,8 +7,8 @@ import json
 import csv
 import hashlib
 from typing import List
-from .database import SecureDatabase
-from .models import Finding, Severity, TestSuite, generate_finding_hash
+from ..storage.database import SecureDatabase
+from ..core.finding import Finding, Severity, TestSuite, generate_finding_hash
 
 
 class ReportGenerator:

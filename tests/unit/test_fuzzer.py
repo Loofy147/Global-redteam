@@ -1,5 +1,5 @@
 import pytest
-from global_red_team.red_team_fuzzer import Mutator
+from redteam.scanners.fuzzer import Mutator
 
 
 @pytest.fixture

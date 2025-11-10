@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import itertools
-from .rate_limiter import RateLimiter
+from ..utils.rate_limiter import RateLimiter
 
 
 class APIVulnerabilityType(Enum):
@@ -55,16 +55,19 @@ class APITestResult:
     remediation: str = ""
 
 
-class APISecurityTester:
+from .base import BaseScanner
+
+class APISecurityTester(BaseScanner):
     """Comprehensive API security testing framework"""
 
-    def __init__(self, base_url: str, auth_token: Optional[str] = None, rate_limit: int = 10):
-        self.base_url = base_url.rstrip("/")
-        self.auth_token = auth_token
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.base_url = config.get("api_url", "").rstrip("/")
+        self.auth_token = config.get("auth_token")
         self.results: List[APITestResult] = []
         self.request_history: List[Dict] = []
         self.session = requests.Session()
-        self.rate_limiter = RateLimiter(max_requests=rate_limit, time_window=1)
+        self.rate_limiter = RateLimiter(max_requests=config.get("rate_limit", 10), time_window=1)
 
     def _make_request(
         self,
@@ -540,6 +543,11 @@ class APISecurityTester:
             print(f"[!] Error parsing Swagger file: {e}")
         return endpoints
 
+    def scan(self) -> List[APITestResult]:
+        """Run a comprehensive API scan."""
+        endpoints = self.discover_endpoints_from_swagger(self.config.get("swagger_file"))
+        return self.test_comprehensive(endpoints)
+
     def generate_report(self) -> str:
         """Generate comprehensive security report"""
         report = []
@@ -583,7 +591,7 @@ class APISecurityTester:
         return "\n".join(report)
 
 
-from .config import Settings
+from ..utils.config import Settings
 
 # Example usage
 if __name__ == "__main__":

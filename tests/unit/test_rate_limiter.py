@@ -1,6 +1,6 @@
 import pytest
 import time
-from src.global_red_team.rate_limiter import RateLimiter
+from src.redteam.utils.rate_limiter import RateLimiter
 
 
 def test_rate_limiter():

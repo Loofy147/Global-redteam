@@ -3,10 +3,10 @@ import subprocess
 import time
 import os
 import signal
-from global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from global_red_team.models import SecurityTestCategory
-from global_red_team.red_team_api_tester import APISecurityTester, APIEndpoint
-from global_red_team.config import Settings
+from redteam.core.orchestrator import RedTeamOrchestrator
+from redteam.core.finding import SecurityTestCategory
+from redteam.scanners.api_scanner import APISecurityTester, APIEndpoint
+from redteam.utils.config import Settings
 
 
 @pytest.fixture(scope="module")
