@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
-from src.global_red_team.database import SecureDatabase
-from src.global_red_team.models import Finding, SecurityTestCategory, Severity, generate_finding_hash
+from src.redteam.storage.database import SecureDatabase
+from src.redteam.core.finding import Finding, SecurityTestCategory, Severity, generate_finding_hash
 
 @pytest.fixture
 def db():

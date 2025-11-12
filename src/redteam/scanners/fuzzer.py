@@ -244,23 +244,21 @@ class Mutator:
         return strategies[strategy]()
 
 
-class CoverageGuidedFuzzer:
+from .base import BaseScanner
+from ..core.finding import Finding, Severity, SecurityTestCategory
+
+class CoverageGuidedFuzzer(BaseScanner):
     """Main fuzzing engine with coverage guidance"""
 
-    def __init__(
-        self,
-        target_function: Callable[[bytes], Any],
-        timeout: float = 1.0,
-        max_iterations: int = 10000,
-        mutation_strategies: Optional[List[MutationStrategy]] = None,
-    ):
-        self.target = target_function
-        self.timeout = timeout
-        self.max_iterations = max_iterations
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.target = self._get_target_function(config.get("target_function"))
+        self.timeout = config.get("timeout", 1.0)
+        self.max_iterations = config.get("max_iterations", 10000)
+        self.mutation_strategies = config.get("mutation_strategies", list(MutationStrategy))
 
         self.mutator = Mutator()
         self.coverage_tracker = CoverageTracker()
-        self.mutation_strategies = mutation_strategies or list(MutationStrategy)
 
         self.corpus: List[FuzzInput] = []
         self.crashes: List[CrashReport] = []
@@ -273,6 +271,20 @@ class CoverageGuidedFuzzer:
             "timeouts": 0,
             "generation": 0,
         }
+
+    def _get_target_function(self, target_function_name: str) -> Callable[[bytes], Any]:
+        """Maps a target function name to an actual function."""
+        # In a real-world scenario, this might involve dynamic imports
+        def vulnerable_parser(data: bytes):
+            if b"CRASH" in data:
+                raise ValueError("Fuzzer found a crash!")
+
+        target_functions = {"vulnerable_parser": vulnerable_parser}
+
+        if target_function_name not in target_functions:
+            raise ValueError(f"Fuzzing target function '{target_function_name}' not found.")
+
+        return target_functions[target_function_name]
 
     def add_seed(self, data: bytes):
         """Add initial seed input to corpus"""
@@ -453,6 +465,25 @@ class CoverageGuidedFuzzer:
 
         report.append("\n" + "=" * 80)
         return "\n".join(report)
+
+    def scan(self) -> List[Finding]:
+        """Run the fuzzer and return a list of findings."""
+        self.run()
+        findings = []
+        for crash in self.crashes:
+            finding_id = f"fuzz-{hashlib.sha256(crash.input_data).hexdigest()[:16]}"
+            finding = Finding(
+                id=finding_id,
+                category=SecurityTestCategory.FUZZING,
+                severity=Severity.HIGH,
+                title="Fuzzer discovered a crash",
+                description=str(crash.exception),
+                affected_component=self.config.get("target_function"),
+                evidence=crash.input_data.hex(),
+                remediation="Investigate crash and fix the underlying bug.",
+            )
+            findings.append(finding)
+        return findings
 
 
 # Example usage and vulnerable functions to test

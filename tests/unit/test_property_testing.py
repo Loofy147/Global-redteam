@@ -1,5 +1,5 @@
 import pytest
-from global_red_team.red_team_property_testing import AdversarialGenerator
+from redteam.scanners.property_tester import AdversarialGenerator
 
 
 @pytest.fixture

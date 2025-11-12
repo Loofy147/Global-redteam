@@ -160,11 +160,16 @@ class AdversarialGenerator:
         return self.random.choice(polymorphic.get(base_type, [None]))
 
 
-class PropertyTester:
+from .base import BaseScanner
+from ..core.finding import Finding, Severity, SecurityTestCategory
+import hashlib
+
+class PropertyTester(BaseScanner):
     """Advanced property-based testing framework"""
 
-    def __init__(self, iterations: int = 1000):
-        self.iterations = iterations
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.iterations = config.get("iterations", 1000)
         self.generator = AdversarialGenerator()
         self.failures: List[TestResult] = []
 
@@ -470,6 +475,32 @@ class PropertyTester:
 
         report.append("\n" + "=" * 80)
         return "\n".join(report)
+
+    def scan(self) -> List[Finding]:
+        """Run the property tester and return a list of findings."""
+
+        def vulnerable_sql_query(user_input: str):
+            if "'" in user_input:
+                return "SQL error"
+            return "OK"
+
+        self.test_injection_resistance(vulnerable_sql_query)
+        findings = []
+        for failure in self.failures:
+            unique_str = f"{failure.vulnerability_type.value}:{failure.input_value}"
+            finding_id = f"prop-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
+            finding = Finding(
+                id=finding_id,
+                category=SecurityTestCategory.PROPERTY_BASED,
+                severity=Severity.HIGH,
+                title=f"Property test failed: {failure.vulnerability_type.value}",
+                description=f"Input: {failure.input_value}, Output: {failure.output_value}",
+                affected_component="vulnerable_sql_query",
+                evidence=failure.input_value,
+                remediation="Fix the code to satisfy the tested property.",
+            )
+            findings.append(finding)
+        return findings
 
 
 # Example usage and test cases

@@ -15,7 +15,8 @@ class ThreatIntelligence:
         """Loads Known Exploited Vulnerabilities data from a JSON file."""
         try:
             with open(kev_file, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                return {item["cve_id"]: item for item in data}
         except (FileNotFoundError, json.JSONDecodeError):
             # In a real application, you'd want to log this error.
             return {}

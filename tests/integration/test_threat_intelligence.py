@@ -1,9 +1,9 @@
 import pytest
-from src.global_red_team.red_team_orchestrator import RedTeamOrchestrator
-from src.global_red_team.models import Finding, SecurityTestCategory, Severity
-from src.global_red_team.config import Settings
-from src.global_red_team.reporting import ReportGenerator
-from src.global_red_team.database import SecureDatabase
+from src.redteam.core.orchestrator import RedTeamOrchestrator
+from src.redteam.core.finding import Finding, SecurityTestCategory, Severity
+from src.redteam.utils.config import Settings
+from src.redteam.reporters.reporting import ReportGenerator
+from src.redteam.storage.database import SecureDatabase
 
 @pytest.fixture
 def settings():

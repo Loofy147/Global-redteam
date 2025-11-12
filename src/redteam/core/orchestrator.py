@@ -7,22 +7,22 @@ import json
 import time
 import hashlib
 import argparse
-from .database import SecureDatabase
-from .red_team_api_tester import APISecurityTester, APIEndpoint
-from .red_team_fuzzer import CoverageGuidedFuzzer
-from .red_team_property_testing import PropertyTester
-from .red_team_race_detector import RaceConditionDetector
-from .reporting import ReportGenerator
-from .models import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
-from .config import Settings
+from ..storage.database import SecureDatabase
+from ..scanners.api_scanner import APISecurityTester, APIEndpoint
+from ..scanners.fuzzer import CoverageGuidedFuzzer
+from ..scanners.property_tester import PropertyTester
+from ..scanners.race_detector import RaceConditionDetector
+from ..reporters.reporting import ReportGenerator
+from .finding import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
+from ..utils.config import Settings
 from pydantic import ValidationError
 import os
 import sys
-from .threat_intelligence import ThreatIntelligence
+from ..analyzers.threat_intelligence import ThreatIntelligence
 from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerability, VulnerabilityPattern
 from typing import Dict, List, Callable, Optional
 from datetime import datetime
-from .logger import logger
+from ..utils.logger import logger
 
 
 class RedTeamOrchestrator:
@@ -83,176 +83,12 @@ class RedTeamOrchestrator:
             )
             self.add_finding(finding)
 
-    def run_api_tests(self):
-        """Run the API security test suite"""
-        api_tester = APISecurityTester(
-            base_url=self.settings.api_url, auth_token=self.settings.auth_token, rate_limit=self.settings.rate_limit
-        )
-
-        if self.settings.swagger_file:
-            endpoints = api_tester.discover_endpoints_from_swagger(
-                self.settings.swagger_file
-            )
-        else:
-            endpoints = [
-                APIEndpoint(path="/api/users/2", method="GET"),
-                APIEndpoint(path="/api/admin/users", method="GET"),
-            ]
-
-        results = api_tester.test_comprehensive(endpoints)
-        for result in results:
-            self.add_finding_from_result(result, SecurityTestCategory.API_SECURITY)
-        return not any(not r.passed for r in results)
-
-    def run_fuzz_tests(self):
-        """Run the fuzz testing suite"""
-        fuzz_settings = self.settings.fuzzing
-        target_function_name = fuzz_settings.target_function
-
-        # Simple mapping of target function names to actual functions
-        # In a real-world scenario, this might involve dynamic imports
-        def vulnerable_parser(data: bytes):
-            if b"CRASH" in data:
-                raise ValueError("Fuzzer found a crash!")
-
-        target_functions = {"vulnerable_parser": vulnerable_parser}
-
-        if target_function_name not in target_functions:
-            logger.warning(
-                f"Fuzzing target function '{target_function_name}' not found. Skipping."
-            )
-            return True
-
-        fuzzer = CoverageGuidedFuzzer(
-            target_function=target_functions[target_function_name],
-            max_iterations=fuzz_settings.max_iterations,
-            timeout=fuzz_settings.timeout,
-        )
-
-        for seed in fuzz_settings.seeds:
-            fuzzer.add_seed(seed.encode())
-
-        fuzzer.run()
-
-        if fuzzer.crashes:
-            for crash in fuzzer.crashes:
-                finding_id = f"fuzz-{hashlib.sha256(crash.input_data).hexdigest()[:16]}"
-                finding = Finding(
-                    id=finding_id,
-                    category=SecurityTestCategory.FUZZING,
-                    severity=Severity.HIGH,
-                    title="Fuzzer discovered a crash",
-                    description=str(crash.exception),
-                    affected_component=target_function_name,
-                    evidence=crash.input_data.hex(),
-                    remediation="Investigate crash and fix the underlying bug.",
-                )
-                self.add_finding(finding)
-            return False
-        return True
-
-    def run_property_tests(self):
-        """Run the property-based testing suite"""
-        property_tester = PropertyTester(iterations=10)
-
-        def vulnerable_sql_query(user_input: str):
-            if "'" in user_input:
-                return "SQL error"
-            return "OK"
-
-        property_tester.test_injection_resistance(vulnerable_sql_query)
-        if property_tester.failures:
-            for failure in property_tester.failures:
-                unique_str = f"{failure.vulnerability_type.value}:{failure.input_value}"
-                finding_id = f"prop-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
-                finding = Finding(
-                    id=finding_id,
-                    category=SecurityTestCategory.PROPERTY_BASED,
-                    severity=Severity.HIGH,
-                    title=f"Property test failed: {failure.vulnerability_type.value}",
-                    description=f"Input: {failure.input_value}, Output: {failure.output_value}",
-                    affected_component="vulnerable_sql_query",
-                    evidence=failure.input_value,
-                    remediation="Fix the code to satisfy the tested property.",
-                )
-                self.add_finding(finding)
-            return False
-        return True
-
-    def _convert_code_vuln_to_finding(self, vuln: Dict) -> Finding:
-        """Converts a CodeVulnerability object to a Finding object."""
-        pattern = vuln["pattern"]
-        code_snippet = vuln.get('code_snippet', '')
-        unique_str = f"{vuln['file_path']}:{vuln['line_number']}:{pattern.value}:{code_snippet}"
-        finding_id = f"sast-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
-
-        return Finding(
-            id=finding_id,
-            category=SecurityTestCategory.STATIC_ANALYSIS,
-            severity=Severity(vuln["severity"]),
-            title=f"{pattern.value.replace('_', ' ').title()} in {os.path.basename(vuln['file_path'])}",
-            description=vuln["explanation"],
-            affected_component=f"{vuln['file_path']}:{vuln['line_number']}",
-            evidence=code_snippet,
-            remediation=vuln['remediation'],
-        )
-
-    def run_sast_scan(self):
-        """Runs the AI-powered static analysis scan on the target codebase."""
-        sast_engine = AIVulnerabilityDiscovery()
-        target_path = self.settings.target_system
-
-        if not os.path.isdir(target_path):
-            logger.warning(f"Invalid static analysis path: {target_path}")
-            return False
-
-        for root, _, files in os.walk(target_path):
-            for file in files:
-                if file.endswith(".py"):
-                    file_path = os.path.join(root, file)
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            code = f.read()
-                    except (FileNotFoundError, IOError) as e:
-                        logger.error(f"Error reading file {file_path}: {e}")
-                        continue
-
-                    results = sast_engine.discover_vulnerabilities(code, file_path)
-                    for vuln in results.get("static_analysis", []):
-                        finding = self._convert_code_vuln_to_finding(vuln)
-                        self.add_finding(finding)
-
-        return True
-
-    def run_race_condition_tests(self):
-        """Run the race condition detection suite on the withdrawal endpoint"""
-        race_detector = RaceConditionDetector(threads=10, iterations=5)
-        url = f"{self.settings.api_url}/api/payments/withdraw"
-        headers = {"Authorization": f"Bearer {self.settings.auth_token}"}
-        # Attempt to withdraw 100 from an account with a balance of 1000 ten times concurrently
-        json_payload = {"amount": 100}
-
-        result = race_detector.test_api_endpoint(
-            url, "POST", headers=headers, json=json_payload
-        )
-
-        if result.is_vulnerable:
-            finding = Finding(
-                id="RACE-API-WITHDRAW",
-                category=SecurityTestCategory.RACE_CONDITIONS,
-                severity=Severity(result.severity),
-                title="Race Condition in Withdrawal API (Double Spend)",
-                description=f"Concurrent requests to the withdrawal API resulted in multiple outcomes, "
-                f"indicating a race condition. This could allow for 'double spending'. "
-                f"Details: {result.details}",
-                affected_component="POST /api/payments/withdraw",
-                evidence=f"{result.unique_outcomes} unique outcomes observed.",
-                remediation="Implement a pessimistic lock (e.g., a mutex or database-level lock) "
-                "around the balance check and withdrawal operation.",
-            )
+    def run_scan(self, scanner: "BaseScanner") -> bool:
+        """Run a scanner and process the findings."""
+        findings = scanner.scan()
+        for finding in findings:
             self.add_finding(finding)
-            return False
-        return True
+        return not findings
 
     def add_finding(self, finding: Finding):
         """Add a security finding"""

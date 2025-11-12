@@ -2,7 +2,7 @@ import logging
 import sys
 
 # Create a logger instance
-logger = logging.getLogger("global_red_team")
+logger = logging.getLogger("redteam")
 logger.setLevel(logging.INFO)
 
 # Create a handler to output to the console
