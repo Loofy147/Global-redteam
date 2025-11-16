@@ -38,7 +38,7 @@ class RedTeamOrchestrator:
         self.target_system = settings.target_system
         self.db = SecureDatabase()
         self.findings: List[Finding] = []
-        self.test_suites: List[TestSuite] = []
+        self.test_ suites: List[TestSuite] = []
         self.execution_log: List[Dict] = []
         self.threat_intelligence = ThreatIntelligence()
 
@@ -124,6 +124,7 @@ class RedTeamOrchestrator:
 
     def add_finding(self, finding: Finding):
         """Add a security finding"""
+        print(f"ADDING FINDING: {finding.title} - {finding.severity}")
         if finding.cve_id:
             threat_info = self.threat_intelligence.get_threat_info(finding.cve_id)
             if threat_info:
@@ -297,6 +298,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    print(f"ARGS: {args}")
 
     try:
         settings_fields = Settings.model_fields.keys()

@@ -14,7 +14,6 @@ class DependencyScanner(BaseScanner):
         Scans the target's requirements.txt for dependency confusion.
         """
         findings = []
-        print(f"SCANNING {target}")
         try:
             with open(target, 'r') as f:
                 for line in f:
