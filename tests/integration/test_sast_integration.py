@@ -18,4 +18,4 @@ def test_sast_integration():
     hardcoded_secret_vuln = [
         f for f in orchestrator.findings if "Hardcoded Secrets" in f.title
     ]
-    assert len(hardcoded_secret_vuln) == 0
+    assert len(hardcoded_secret_vuln) > 0

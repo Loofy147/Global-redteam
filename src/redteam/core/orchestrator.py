@@ -12,6 +12,7 @@ from ..scanners.api_scanner import APISecurityTester, APIEndpoint
 from ..scanners.fuzzer import CoverageGuidedFuzzer
 from ..scanners.property_tester import PropertyTester
 from ..scanners.race_detector import RaceConditionDetector
+from ..scanners.dependency_scanner import DependencyScanner
 from ..reporters.reporting import ReportGenerator
 from .finding import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from ..utils.config import Settings
@@ -89,6 +90,11 @@ class RedTeamOrchestrator:
         for finding in findings:
             self.add_finding(finding)
         return not findings
+
+    def run_dependency_scan(self):
+        """Runs the dependency confusion scanner."""
+        scanner = DependencyScanner(self.settings)
+        return self.run_scan(scanner)
 
     def add_finding(self, finding: Finding):
         """Add a security finding"""
@@ -299,6 +305,11 @@ if __name__ == "__main__":
             SecurityTestCategory.STATIC_ANALYSIS,
             [orchestrator.run_sast_scan],
             "AI-powered static analysis of the codebase.",
+        ),
+        "dependency": (
+            SecurityTestCategory.SUPPLY_CHAIN,
+            [orchestrator.run_dependency_scan],
+            "Dependency confusion scanning.",
         ),
     }
 
