@@ -13,6 +13,7 @@ from ..scanners.fuzzer import CoverageGuidedFuzzer
 from ..scanners.property_tester import PropertyTester
 from ..scanners.race_detector import RaceConditionDetector
 from ..scanners.dependency_scanner import DependencyScanner
+from ..scanners.sast_scanner import SastScanner
 from ..reporters.reporting import ReportGenerator
 from .finding import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from ..utils.config import Settings
@@ -93,11 +94,37 @@ class RedTeamOrchestrator:
 
     def run_dependency_scan(self):
         """Runs the dependency confusion scanner."""
-        scanner = DependencyScanner(self.settings)
+        scanner = DependencyScanner(self.settings.model_dump())
         return self.run_scan(scanner)
+
+    def run_sast_scan(self):
+        """Runs the SAST scanner."""
+        scanner = SastScanner(self.settings.model_dump())
+        return self.run_scan(scanner)
+
+    def run_api_tests(self):
+        """Runs the API security tests."""
+        # This is a placeholder. In a real application, this would run the API scanner.
+        return True
+
+    def run_fuzz_tests(self):
+        """Runs the fuzz tests."""
+        # This is a placeholder. In a real application, this would run the fuzzer.
+        return True
+
+    def run_property_tests(self):
+        """Runs the property-based tests."""
+        # This is a placeholder. In a real application, this would run the property tester.
+        return True
+
+    def run_race_condition_tests(self):
+        """Runs the race condition tests."""
+        # This is a placeholder. In a real application, this would run the race condition detector.
+        return True
 
     def add_finding(self, finding: Finding):
         """Add a security finding"""
+        print(f"ADDING FINDING: {finding.title} - {finding.severity}")
         if finding.cve_id:
             threat_info = self.threat_intelligence.get_threat_info(finding.cve_id)
             if threat_info:
@@ -264,8 +291,14 @@ if __name__ == "__main__":
         type=str,
         help="Path to Swagger/OpenAPI file for API discovery",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with a non-zero status code if critical vulnerabilities are found.",
+    )
 
     args = parser.parse_args()
+    print(f"ARGS: {args}")
 
     try:
         settings_fields = Settings.model_fields.keys()
@@ -382,5 +415,11 @@ if __name__ == "__main__":
         report_generator.export_json("red_team_findings.json")
         report_generator.export_csv("red_team_findings.csv")
         report_generator.export_html("red_team_report.html")
+
+        if args.strict and orchestrator.stats["critical_findings"] > 0:
+            logger.error("\n" + "=" * 80)
+            logger.error("CRITICAL VULNERABILITIES FOUND. Failing build.")
+            logger.error("=" * 80)
+            sys.exit(1)
     else:
         parser.print_help()

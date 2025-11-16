@@ -1,5 +1,6 @@
 import requests
 from src.redteam.scanners.base import BaseScanner
+from ..core.finding import Finding, Severity, SecurityTestCategory
 
 class DependencyScanner(BaseScanner):
     """
@@ -25,11 +26,16 @@ class DependencyScanner(BaseScanner):
                     if response.status_code == 200:
                         pypi_data = response.json()
                         latest_version = pypi_data['info']['version']
-                        findings.append({
-                            "type": "Dependency Confusion",
-                            "description": f"Package '{package_name}' exists on PyPI with version {latest_version}. This could lead to a dependency confusion attack.",
-                            "file_path": target
-                        })
+                        findings.append(Finding(
+                            id=f"dep-{package_name}",
+                            category=SecurityTestCategory.SUPPLY_CHAIN,
+                            severity=Severity.CRITICAL,
+                            title="Dependency Confusion",
+                            description=f"Package '{package_name}' exists on PyPI with version {latest_version}. This could lead to a dependency confusion attack.",
+                            affected_component=target,
+                            evidence=f"Package: {package_name}, Public Version: {latest_version}",
+                            remediation="Ensure that your private package names do not conflict with public package names.",
+                        ))
         except FileNotFoundError:
             findings.append({
                 "type": "File Not Found",
