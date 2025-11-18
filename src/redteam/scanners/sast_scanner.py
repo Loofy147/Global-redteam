@@ -25,15 +25,18 @@ class SastScanner(BaseScanner):
 
         for root, _, files in os.walk(target_path):
             for file in files:
-                if file.endswith(".py"):
+                if file.endswith((".py", ".js")):
                     file_path = os.path.join(root, file)
+                    language = "javascript" if file.endswith(".js") else "python"
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             code = f.read()
                     except (FileNotFoundError, IOError):
                         continue
 
-                    results = self.sast_engine.discover_vulnerabilities(code, file_path)
+                    results = self.sast_engine.discover_vulnerabilities(
+                        code, file_path, language=language
+                    )
                     for vuln in results.get("static_analysis", []):
                         finding = self._convert_code_vuln_to_finding(vuln)
                         findings.append(finding)
