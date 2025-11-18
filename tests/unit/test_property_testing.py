@@ -1,5 +1,5 @@
 import pytest
-from redteam.scanners.property_tester import AdversarialGenerator
+from src.redteam.scanners.property_tester import AdversarialGenerator, PropertyTester
 
 
 @pytest.fixture
@@ -37,3 +37,11 @@ def test_generate_overflow_string(generator):
 def test_generate_format_string_attack(generator):
     s = generator.generate_format_string_attack()
     assert "%" in s
+
+def test_property_tester_init():
+    """Tests that the property tester can be initialized correctly."""
+    config = {
+        'iterations': 100,
+    }
+    tester = PropertyTester(config)
+    assert tester.iterations == 100

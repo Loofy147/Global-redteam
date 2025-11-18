@@ -27,7 +27,7 @@ class TestDependencyScanner(unittest.TestCase):
         m = mock_open(read_data=requirements_content)
         with patch('builtins.open', m):
             scanner = DependencyScanner(config={'dependency_file': 'requirements.txt'})
-            findings = scanner._scan_implementation()
+            findings = scanner.scan()
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].title, 'Dependency Confusion')
