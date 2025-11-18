@@ -8,11 +8,25 @@ import threading
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
+
+# --- Custom Datetime Adapters for SQLite ---
+
+def adapt_datetime_iso(dt_obj):
+    """Adapt datetime.datetime to timezone-aware ISO 8601 string."""
+    return dt_obj.isoformat()
+
+def convert_datetime_iso(iso_str):
+    """Convert ISO 8601 string back to datetime.datetime object."""
+    return datetime.fromisoformat(iso_str.decode('utf-8'))
+
+# Register the new adapters
+sqlite3.register_adapter(datetime, adapt_datetime_iso)
+sqlite3.register_converter("timestamp", convert_datetime_iso)
 
 
 class DatabaseError(Exception):
@@ -31,7 +45,7 @@ class ConnectionPool:
 
     def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection"""
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")  # Better concurrency
@@ -141,7 +155,7 @@ class SecureDatabase:
         Returns:
             bool: True if new finding, False if updated existing
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         with self.pool.get_connection() as conn:
             cursor = conn.cursor()
@@ -246,7 +260,7 @@ class SecureDatabase:
                 UPDATE findings
                 SET status = 'closed', is_regression = 0, updated_at = ?
                 WHERE last_seen < ? AND status != 'closed'
-            """, (datetime.now(), run_start_time))
+            """, (datetime.now(timezone.utc), run_start_time))
 
             count = cursor.rowcount
             logger.info(f"Closed {count} old findings")
@@ -319,7 +333,7 @@ class SecureDatabase:
                     description = description || ? || ?,
                     updated_at = ?
                 WHERE finding_hash = ?
-            """, ('\n\n[False Positive Reason]: ', reason, datetime.now(), finding_hash))
+            """, ('\n\n[False Positive Reason]: ', reason, datetime.now(timezone.utc), finding_hash))
 
             return cursor.rowcount > 0
 

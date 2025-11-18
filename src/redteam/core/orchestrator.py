@@ -14,6 +14,7 @@ from ..scanners.property_tester import PropertyTester
 from ..scanners.race_detector import RaceConditionDetector
 from ..scanners.dependency_scanner import DependencyScanner
 from ..scanners.sast_scanner import SastScanner
+from ..scanners.idor_scanner import IDORScanner
 from ..reporters.reporting import ReportGenerator
 from .finding import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from ..utils.config import Settings
@@ -100,6 +101,11 @@ class RedTeamOrchestrator:
     def run_sast_scan(self):
         """Runs the SAST scanner."""
         scanner = SastScanner(self.settings.model_dump())
+        return self.run_scan(scanner)
+
+    def run_idor_scan(self):
+        """Runs the IDOR scanner."""
+        scanner = IDORScanner(self.settings.model_dump())
         return self.run_scan(scanner)
 
     def run_api_tests(self):
@@ -343,6 +349,11 @@ if __name__ == "__main__":
             SecurityTestCategory.SUPPLY_CHAIN,
             [orchestrator.run_dependency_scan],
             "Dependency confusion scanning.",
+        ),
+        "idor": (
+            SecurityTestCategory.API_SECURITY,
+            [orchestrator.run_idor_scan],
+            "Advanced Insecure Direct Object Reference (IDOR) scanning.",
         ),
     }
 
