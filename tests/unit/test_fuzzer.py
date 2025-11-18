@@ -1,5 +1,5 @@
 import pytest
-from redteam.scanners.fuzzer import Mutator
+from src.redteam.scanners.fuzzer import Mutator, CoverageGuidedFuzzer
 
 
 @pytest.fixture
@@ -60,3 +60,15 @@ def test_splice_mutation(mutator):
             assert True
             return
     assert False, "Splice mutation failed to produce a new value"
+
+
+def test_fuzzer_init():
+    """Tests that the fuzzer can be initialized correctly."""
+    config = {
+        'target_function': 'vulnerable_parser',
+        'max_iterations': 100,
+        'timeout': 1.0,
+    }
+    fuzzer = CoverageGuidedFuzzer(config)
+    assert fuzzer.max_iterations == 100
+    assert fuzzer.timeout == 1.0
