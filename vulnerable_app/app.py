@@ -28,6 +28,10 @@ users = {
         "balance": 500,
     },
 }
+invoices = {
+    1: {"invoice_id": 1, "user_id": 1, "amount": 100, "description": "Invoice for user 1"},
+    2: {"invoice_id": 2, "user_id": 2, "amount": 200, "description": "Invoice for user 2"},
+}
 next_user_id = 3
 balance_lock = threading.Lock()
 
@@ -94,6 +98,16 @@ def login():
             )
             return jsonify({"token": token})
     return jsonify({"error": "Invalid credentials"}), 401
+
+
+@app.route("/api/invoices/<int:invoice_id>", methods=["GET"])
+@login_required
+def get_invoice(invoice_id):
+    """Vulnerable to IDOR - no authorization check"""
+    invoice = invoices.get(invoice_id)
+    if invoice:
+        return jsonify(invoice)
+    return jsonify({"error": "Invoice not found"}), 404
 
 
 @app.route("/api/users/<int:user_id>", methods=["GET"])

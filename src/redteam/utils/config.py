@@ -3,7 +3,7 @@ This module contains the Pydantic settings model for the Red Team Orchestrator.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, ValidationError, validator
+from pydantic import Field, ValidationError, field_validator
 from typing import Optional, List
 import sys
 
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     )
     fuzzing: FuzzingSettings = FuzzingSettings()
 
-    @validator("auth_token")
+    @field_validator("auth_token")
     def validate_auth_token(cls, v):
         """Ensure token is not a default/example"""
         if v.startswith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0"):
