@@ -246,6 +246,7 @@ class Mutator:
 
 from .base import BaseScanner
 from ..core.finding import Finding, Severity, SecurityTestCategory
+from typing import List
 
 class CoverageGuidedFuzzer(BaseScanner):
     """Main fuzzing engine with coverage guidance"""
@@ -466,7 +467,10 @@ class CoverageGuidedFuzzer(BaseScanner):
         report.append("\n" + "=" * 80)
         return "\n".join(report)
 
-    def scan(self) -> List[Finding]:
+    def get_required_config_fields(self) -> List[str]:
+        return ["target_function", "max_iterations", "timeout"]
+
+    def _scan_implementation(self) -> List[Finding]:
         """Run the fuzzer and return a list of findings."""
         self.run()
         findings = []

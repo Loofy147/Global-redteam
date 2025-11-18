@@ -1,18 +1,20 @@
 import requests
 from src.redteam.scanners.base import BaseScanner
 from ..core.finding import Finding, Severity, SecurityTestCategory
+from typing import List
 
 class DependencyScanner(BaseScanner):
     """
     Scans for dependency confusion vulnerabilities.
     """
-    def __init__(self, config: dict):
-        super().__init__(config)
+    def get_required_config_fields(self) -> List[str]:
+        return ["dependency_file"]
 
-    def scan(self, target):
+    def _scan_implementation(self) -> List[Finding]:
         """
         Scans the target's requirements.txt for dependency confusion.
         """
+        target = self.config.get("dependency_file")
         findings = []
         try:
             with open(target, 'r') as f:

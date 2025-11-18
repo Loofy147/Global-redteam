@@ -17,12 +17,13 @@ class RaceConditionResult:
 from .base import BaseScanner
 from ..core.finding import Finding, Severity, SecurityTestCategory
 import hashlib
+from typing import List
 
 class RaceConditionDetector(BaseScanner):
     def __init__(self, config: dict):
         super().__init__(config)
-        self.threads = config.get("threads", 10)
-        self.iterations = config.get("iterations", 2)
+        self.threads = self.config.get("threads", 10)
+        self.iterations = self.config.get("iterations", 2)
 
     def test_concurrent_execution(
         self, target_function: Callable[[], Any]
@@ -75,7 +76,10 @@ class RaceConditionDetector(BaseScanner):
 
         return self.test_concurrent_execution(make_request)
 
-    def scan(self) -> List[Finding]:
+    def get_required_config_fields(self) -> List[str]:
+        return ["api_url", "auth_token", "threads", "iterations"]
+
+    def _scan_implementation(self) -> List[Finding]:
         """Run the race condition detector and return a list of findings."""
         url = f"{self.config.get('api_url')}/api/payments/withdraw"
         headers = {"Authorization": f"Bearer {self.config.get('auth_token')}"}

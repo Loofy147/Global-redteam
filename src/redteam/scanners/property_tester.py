@@ -163,13 +163,14 @@ class AdversarialGenerator:
 from .base import BaseScanner
 from ..core.finding import Finding, Severity, SecurityTestCategory
 import hashlib
+from typing import List
 
 class PropertyTester(BaseScanner):
     """Advanced property-based testing framework"""
 
     def __init__(self, config: dict):
         super().__init__(config)
-        self.iterations = config.get("iterations", 1000)
+        self.iterations = self.config.get("iterations", 1000)
         self.generator = AdversarialGenerator()
         self.failures: List[TestResult] = []
 
@@ -476,7 +477,10 @@ class PropertyTester(BaseScanner):
         report.append("\n" + "=" * 80)
         return "\n".join(report)
 
-    def scan(self) -> List[Finding]:
+    def get_required_config_fields(self) -> List[str]:
+        return ["iterations"]
+
+    def _scan_implementation(self) -> List[Finding]:
         """Run the property tester and return a list of findings."""
 
         def vulnerable_sql_query(user_input: str):

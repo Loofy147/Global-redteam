@@ -26,12 +26,12 @@ class TestDependencyScanner(unittest.TestCase):
         requirements_content = "vulnerable-package==0.1.0"
         m = mock_open(read_data=requirements_content)
         with patch('builtins.open', m):
-            scanner = DependencyScanner(config={})
-            findings = scanner.scan('requirements.txt')
+            scanner = DependencyScanner(config={'dependency_file': 'requirements.txt'})
+            findings = scanner._scan_implementation()
 
         self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0]['type'], 'Dependency Confusion')
-        self.assertIn('vulnerable-package', findings[0]['description'])
+        self.assertEqual(findings[0].title, 'Dependency Confusion')
+        self.assertIn('vulnerable-package', findings[0].description)
 
 if __name__ == '__main__':
     unittest.main()
