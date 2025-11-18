@@ -3,6 +3,7 @@ from ..core.finding import Finding, Severity, SecurityTestCategory
 from ai_vulnerability_discovery import AIVulnerabilityDiscovery
 import os
 import hashlib
+from typing import List
 
 class SastScanner(BaseScanner):
     """Static analysis scanner."""
@@ -11,9 +12,12 @@ class SastScanner(BaseScanner):
         super().__init__(config)
         self.sast_engine = AIVulnerabilityDiscovery()
 
-    def scan(self) -> list[Finding]:
+    def get_required_config_fields(self) -> List[str]:
+        return ["static_analysis_path"]
+
+    def _scan_implementation(self) -> list[Finding]:
         """Run the SAST scanner and return a list of findings."""
-        target_path = self.config.get("target_system")
+        target_path = self.config.get("static_analysis_path")
         findings = []
 
         if not os.path.isdir(target_path):

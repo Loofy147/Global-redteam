@@ -38,7 +38,7 @@ class RedTeamOrchestrator:
         self.target_system = settings.target_system
         self.db = SecureDatabase()
         self.findings: List[Finding] = []
-        self.test_ suites: List[TestSuite] = []
+        self.test_suites: List[TestSuite] = []
         self.execution_log: List[Dict] = []
         self.threat_intelligence = ThreatIntelligence()
 
