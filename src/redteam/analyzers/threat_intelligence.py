@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Dict, Optional
+from ..core.exceptions import ConfigurationError
 
 # Build a path to the JSON file relative to this file's location
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -17,9 +18,10 @@ class ThreatIntelligence:
             with open(kev_file, "r") as f:
                 data = json.load(f)
                 return {item["cve_id"]: item for item in data}
-        except (FileNotFoundError, json.JSONDecodeError):
-            # In a real application, you'd want to log this error.
-            return {}
+        except FileNotFoundError:
+            raise ConfigurationError(f"Threat intelligence file not found at: {kev_file}")
+        except json.JSONDecodeError:
+            raise ConfigurationError(f"Failed to decode threat intelligence file: {kev_file}")
 
     def get_threat_info(self, cve_id: str) -> Optional[Dict]:
         """Retrieves threat intelligence for a given CVE ID."""
