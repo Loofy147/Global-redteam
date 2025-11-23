@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
 from .database import db, init_app, Finding, Evidence
 from .algorithms import generate_canonical_finding, compute_confidence
-from .celery import init_celery
+from .celery_app import init_celery
+import uuid
 
 
 def create_app(config_overrides=None):
@@ -10,6 +11,7 @@ def create_app(config_overrides=None):
         app.config.update(config_overrides)
     init_app(app)
     init_celery(app)
+    register_routes(app)
     return app
 
 
@@ -27,6 +29,13 @@ def register_routes(app):
     def get_findings():
         findings = Finding.query.all()
         return jsonify([f.to_dict() for f in findings])
+
+    @app.route("/findings/<uuid:id>", methods=["GET"])
+    def get_finding(id):
+        finding = Finding.query.get(id)
+        if finding is None:
+            return jsonify({"error": "Finding not found"}), 404
+        return jsonify(finding.to_dict())
 
     # Command to create DB tables
     @app.cli.command("initdb")

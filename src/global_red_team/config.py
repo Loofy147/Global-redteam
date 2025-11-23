@@ -47,3 +47,13 @@ class Settings(BaseSettings):
         "./vulnerable_app", json_schema_extra={"env": "STATIC_ANALYSIS_PATH"}
     )
     fuzzing: FuzzingSettings = FuzzingSettings()
+    database_url: str = Field(
+        "postgresql://redsight:redsight@db/redsight",
+        json_schema_extra={"env": "DATABASE_URL"},
+    )
+    celery_broker_url: str = Field(
+        "redis://redis:6379/0", json_schema_extra={"env": "CELERY_BROKER_URL"}
+    )
+    celery_result_backend: str = Field(
+        "redis://redis:6379/0", json_schema_extra={"env": "CELERY_RESULT_BACKEND"}
+    )

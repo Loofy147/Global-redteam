@@ -1,6 +1,22 @@
 version: "3.8"
 
 services:
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=redsight
+      - POSTGRES_PASSWORD=redsight
+      - POSTGRES_DB=redsight
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+
   vulnerable_app:
     build:
       context: ./vulnerable_app
@@ -12,7 +28,29 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    command: tail -f /dev/null
     depends_on:
       - vulnerable_app
+      - db
+      - redis
     environment:
       - API_URL=http://vulnerable_app:5000
+      - DATABASE_URL=postgresql://redsight:redsight@db/redsight
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["celery", "-A", "src.global_red_team.tasks", "worker", "--loglevel=info"]
+    depends_on:
+      - redis
+      - db
+    environment:
+      - DATABASE_URL=postgresql://redsight:redsight@db/redsight
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+volumes:
+  postgres_data:

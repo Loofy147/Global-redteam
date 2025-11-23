@@ -21,6 +21,7 @@ from ai_vulnerability_discovery import AIVulnerabilityDiscovery, CodeVulnerabili
 from typing import Dict, List, Callable, Optional
 from datetime import datetime
 from .logger import logger
+from . import tasks
 
 
 class RedTeamOrchestrator:
@@ -49,6 +50,34 @@ class RedTeamOrchestrator:
             "low_findings": 0,
             "start_time": datetime.now(),
             "end_time": datetime.now(),
+        }
+
+        self.suites = {
+            "api": (
+                SecurityTestCategory.API_SECURITY,
+                [self.run_api_tests],
+                "Comprehensive API security testing.",
+            ),
+            "fuzz": (
+                SecurityTestCategory.FUZZING,
+                [self.run_fuzz_tests],
+                "Coverage-guided fuzzing of vulnerable functions.",
+            ),
+            "property": (
+                SecurityTestCategory.PROPERTY_BASED,
+                [self.run_property_tests],
+                "Adversarial property-based testing.",
+            ),
+            "race": (
+                SecurityTestCategory.RACE_CONDITIONS,
+                [self.run_race_condition_tests],
+                "Detecting concurrency vulnerabilities.",
+            ),
+            "sast": (
+                SecurityTestCategory.STATIC_ANALYSIS,
+                [self.run_sast_scan],
+                "AI-powered static analysis of the codebase.",
+            ),
         }
 
     def register_test_suite(
@@ -418,34 +447,6 @@ if __name__ == "__main__":
 
     orchestrator = RedTeamOrchestrator(settings)
 
-    suites = {
-        "api": (
-            SecurityTestCategory.API_SECURITY,
-            [orchestrator.run_api_tests],
-            "Comprehensive API security testing.",
-        ),
-        "fuzz": (
-            SecurityTestCategory.FUZZING,
-            [orchestrator.run_fuzz_tests],
-            "Coverage-guided fuzzing of vulnerable functions.",
-        ),
-        "property": (
-            SecurityTestCategory.PROPERTY_BASED,
-            [orchestrator.run_property_tests],
-            "Adversarial property-based testing.",
-        ),
-        "race": (
-            SecurityTestCategory.RACE_CONDITIONS,
-            [orchestrator.run_race_condition_tests],
-            "Detecting concurrency vulnerabilities.",
-        ),
-        "sast": (
-            SecurityTestCategory.STATIC_ANALYSIS,
-            [orchestrator.run_sast_scan],
-            "AI-powered static analysis of the codebase.",
-        ),
-    }
-
     if args.dashboard:
         # Note: The dashboard functionality might need to be moved to the reporting module as well
         # For now, we'll leave it here.
@@ -490,29 +491,12 @@ if __name__ == "__main__":
     elif args.suites:
         suites_to_run = args.suites
         if "all" in suites_to_run:
-            suites_to_run = suites.keys()
+            suites_to_run = orchestrator.suites.keys()
 
         for suite_name in suites_to_run:
-            if suite_name in suites:
-                category, tests, description = suites[suite_name]
-                orchestrator.register_test_suite(
-                    suite_name, category, tests, description
-                )
+            if suite_name in orchestrator.suites:
+                tasks.run_test_suite.delay(suite_name)
+                logger.info(f"Dispatched task to run suite: {suite_name}")
 
-        orchestrator.execute_all_tests()
-
-        report_generator = ReportGenerator(
-            orchestrator.target_system,
-            orchestrator.findings,
-            orchestrator.stats,
-            orchestrator.test_suites,
-        )
-
-        logger.info("\n" + report_generator.generate_executive_summary())
-        logger.info("\n" + report_generator.generate_technical_report())
-
-        report_generator.export_json("red_team_findings.json")
-        report_generator.export_csv("red_team_findings.csv")
-        report_generator.export_html("red_team_report.html")
     else:
         parser.print_help()

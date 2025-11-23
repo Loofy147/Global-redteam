@@ -1,4 +1,4 @@
-name: Red Team Security Scan
+name: CI Pipeline
 
 on:
   push:
@@ -7,57 +7,51 @@ on:
     branches: [ main ]
 
 jobs:
-  security-scan:
+  build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: redsight
+          POSTGRES_PASSWORD: redsight
+          POSTGRES_DB: redsight
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+
     steps:
-    - name: Checkout Application Code
+    - name: Checkout Code
       uses: actions/checkout@v3
-
-    # Add steps to build and deploy your application to a staging environment here
-    # - name: Build and Deploy to Staging
-    #   run: |
-    #     # Your deployment script here
-    #     echo "STAGING_URL=https://staging.example.com" >> $GITHUB_ENV
-
-    - name: Checkout Red Team Framework
-      uses: actions/checkout@v3
-      with:
-        repository: [Your-GitHub-Org]/global-redteam
-        path: global-redteam
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.12'
 
-    - name: Install Red Team Dependencies
+    - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r global-redteam/requirements.txt
+        pip install -r requirements.txt
+        pip install -r redsight_mvp/api/requirements.txt
+        pip install black flake8 pip-audit
 
-    - name: Create Staging Config
+    - name: Run Black Formatter Check
+      run: black --check .
+
+    - name: Run Flake8 Linter
+      run: flake8 .
+
+    - name: Run Pip Audit
+      run: pip-audit
+
+    - name: Run Pytest
       run: |
-        echo '{
-          "api_url": "${{ env.STAGING_URL }}",
-          "auth_token": "${{ secrets.STAGING_AUTH_TOKEN }}",
-          "swagger_file": "swagger.json",
-          "fuzzing": { "enabled": false }
-        }' > global-redteam/config.staging.json
-
-    - name: Run Red Team Scan
-      run: |
-        python global-redteam/red_team_orchestrator.py --suites api --config global-redteam/config.staging.json
-
-    - name: Upload Scan Results
-      uses: actions/upload-artifact@v3
-      with:
-        name: red-team-results
-        path: |
-          global-redteam/red_team_findings.json
-          global-redteam/findings.db
-
-    # Add steps for alerting, ticketing, and gating here
-    # - name: Process Results and Gate Pipeline
-    #   run: |
-    #     # Script to parse JSON and fail the build if critical vulns are found
+        export DATABASE_URL=postgresql://redsight:redsight@localhost/redsight
+        export CELERY_BROKER_URL=redis://localhost:6379/0
+        export CELERY_RESULT_BACKEND=redis://localhost:6379/0
+        python -m pytest

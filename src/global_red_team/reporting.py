@@ -385,3 +385,58 @@ class ReportGenerator:
         with open(filepath, "w") as f:
             f.write(html)
         print(f"[+] HTML report exported to {filepath}")
+
+    def export_sarif(self, filepath: str):
+        """Export findings as SARIF"""
+        results = []
+        for f in self.findings:
+            results.append(
+                {
+                    "ruleId": f.id,
+                    "message": {
+                        "text": f.description,
+                    },
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {
+                                    "uri": f.affected_component,
+                                },
+                                "region": {
+                                    "startLine": 1,
+                                },
+                            }
+                        }
+                    ],
+                }
+            )
+
+        sarif_log = {
+            "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Global Red Team Orchestrator",
+                            "rules": [
+                                {
+                                    "id": f.id,
+                                    "name": f.title,
+                                    "shortDescription": {"text": f.title},
+                                    "fullDescription": {"text": f.description},
+                                    "help": {"text": f.remediation},
+                                }
+                                for f in self.findings
+                            ],
+                        }
+                    },
+                    "results": results,
+                }
+            ],
+        }
+
+        with open(filepath, "w") as f:
+            json.dump(sarif_log, f, indent=2)
+
+        print(f"[+] SARIF report exported to {filepath}")
