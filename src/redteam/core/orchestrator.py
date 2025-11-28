@@ -15,6 +15,9 @@ from ..scanners.race_detector import RaceConditionDetector
 from ..scanners.dependency_scanner import DependencyScanner
 from ..scanners.sast_scanner import SastScanner
 from ..scanners.idor_scanner import IDORScanner
+from ..scanners.formal_verifier import FormalVerifier
+from ..scanners.llm_autonomous_hunter import LLMAutonomousHunter
+from ..scanners.supply_chain_validator import SupplyChainValidator
 from ..reporters.reporting import ReportGenerator
 from .finding import Finding, Severity, SecurityTestCategory, TestSuite, generate_finding_hash
 from ..utils.config import Settings
@@ -106,6 +109,21 @@ class RedTeamOrchestrator:
     def run_idor_scan(self):
         """Runs the IDOR scanner."""
         scanner = IDORScanner(self.settings.model_dump())
+        return self.run_scan(scanner)
+
+    def run_formal_verification(self):
+        """Runs the formal verification scanner."""
+        scanner = FormalVerifier(self.settings.model_dump())
+        return self.run_scan(scanner)
+
+    def run_llm_autonomous_hunter(self):
+        """Runs the LLM autonomous hunter scanner."""
+        scanner = LLMAutonomousHunter(self.settings.model_dump())
+        return self.run_scan(scanner)
+
+    def run_supply_chain_validator(self):
+        """Runs the supply chain validator scanner."""
+        scanner = SupplyChainValidator(self.settings.model_dump())
         return self.run_scan(scanner)
 
     def run_api_tests(self):
@@ -354,6 +372,21 @@ if __name__ == "__main__":
             SecurityTestCategory.API_SECURITY,
             [orchestrator.run_idor_scan],
             "Advanced Insecure Direct Object Reference (IDOR) scanning.",
+        ),
+        "formal": (
+            SecurityTestCategory.STATIC_ANALYSIS,
+            [orchestrator.run_formal_verification],
+            "Formal verification of C/C++ code.",
+        ),
+        "llm": (
+            SecurityTestCategory.STATIC_ANALYSIS,
+            [orchestrator.run_llm_autonomous_hunter],
+            "LLM-powered autonomous vulnerability hunter.",
+        ),
+        "supply-chain": (
+            SecurityTestCategory.SUPPLY_CHAIN,
+            [orchestrator.run_supply_chain_validator],
+            "End-to-end supply chain security validation.",
         ),
     }
 

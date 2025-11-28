@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Any, Optional
 
 from .base import BaseScanner
+from ..utils.rate_limiter import RateLimiter
 from ..utils.api_utils import (
     discover_endpoints_from_swagger,
     make_api_request,
@@ -25,6 +26,7 @@ class IDORScanner(BaseScanner):
         self.primary_user_token = self.config.get("primary_user_token")
         self.secondary_user_token = self.config.get("secondary_user_token")
         self.secondary_user_resource_ids = self.config.get("secondary_user_resource_ids", [])
+        self.rate_limiter = RateLimiter(max_requests=self.config.get("rate_limit", 10), time_window=1)
 
     def get_required_config_fields(self) -> List[str]:
         """Return required configuration fields for the scanner."""
@@ -88,6 +90,7 @@ class IDORScanner(BaseScanner):
             )
 
             # Make a request with the primary user's token to the secondary user's resource
+            self.rate_limiter.acquire()
             response = make_api_request(
                 self.base_url, test_endpoint, token=self.primary_user_token
             )

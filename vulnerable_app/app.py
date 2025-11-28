@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify, g
 import jwt
 import time
 import threading
-from models import LoginRequest, WithdrawRequest
+from .models import LoginRequest, WithdrawRequest
 from pydantic import ValidationError
 
 app = Flask(__name__)
