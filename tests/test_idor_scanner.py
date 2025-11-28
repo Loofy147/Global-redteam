@@ -4,7 +4,9 @@ Tests for the advanced IDOR Scanner
 
 import unittest
 import os
+import sys
 import jwt
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 from unittest.mock import patch
 from src.redteam.scanners.idor_scanner import IDORScanner

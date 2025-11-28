@@ -1,0 +1,5 @@
+setup.py
+vulnerable_app.egg-info/PKG-INFO
+vulnerable_app.egg-info/SOURCES.txt
+vulnerable_app.egg-info/dependency_links.txt
+vulnerable_app.egg-info/top_level.txt

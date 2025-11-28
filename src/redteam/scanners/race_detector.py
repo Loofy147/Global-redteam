@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Callable, Any, List
 import requests
 
+from ..utils.rate_limiter import RateLimiter
+
 
 @dataclass
 class RaceConditionResult:
@@ -24,6 +26,7 @@ class RaceConditionDetector(BaseScanner):
         super().__init__(config)
         self.threads = self.config.get("threads", 10)
         self.iterations = self.config.get("iterations", 2)
+        self.rate_limiter = RateLimiter(max_requests=self.config.get("rate_limit", 10), time_window=1)
 
     def test_concurrent_execution(
         self, target_function: Callable[[], Any]
@@ -67,6 +70,7 @@ class RaceConditionDetector(BaseScanner):
 
         def make_request():
             try:
+                self.rate_limiter.acquire()
                 response = requests.request(
                     method, url, headers=headers, json=json, timeout=5
                 )
