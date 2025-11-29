@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from urllib.parse import urlparse
 from src.redteam.scanners.dependency_scanner import DependencyScanner
 import os
 
@@ -22,7 +23,7 @@ class TestDependencyScanner(unittest.TestCase):
                     mock_response.json.return_value = {'info': {'version': '1.0.0'}}
                 else:
                     mock_response.status_code = 404
-            elif "registry.npmjs.org" in url:
+            elif urlparse(url).hostname == "registry.npmjs.org":
                 if "express" in url or "jest" in url:
                     mock_response.status_code = 200
                 else:
