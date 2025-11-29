@@ -218,4 +218,4 @@ def metrics():
 
 if __name__ == "__main__":
     app.start_time = time.time()
-    app.run(debug=True, port=5000)
+    app.run(port=5000)
