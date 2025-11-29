@@ -1,4 +1,6 @@
 name: Red Team Security Scan
+permissions:
+  contents: read
 
 on:
   push:
