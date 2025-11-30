@@ -17,7 +17,7 @@ class TestDependencyScanner(unittest.TestCase):
         """
         def mock_requests_get(url, **kwargs):
             mock_response = unittest.mock.Mock()
-            if "pypi.org" in url:
+            if urlparse(url).hostname == "pypi.org":
                 if "requests" in url or "flask" in url:
                     mock_response.status_code = 200
                     mock_response.json.return_value = {'info': {'version': '1.0.0'}}
