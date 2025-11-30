@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 import logging
-from ..core.finding import Finding
-from ..core.exceptions import ScannerException, ConfigurationError
+from src.redteam.core.finding import Finding
+from src.redteam.core.exceptions import ScannerException, ConfigurationError
 
 logger = logging.getLogger(__name__)
 

@@ -1,34 +1,11 @@
-"""
-This module contains the data classes used by the Red Team Orchestrator.
-"""
-
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import List, Callable, Optional, Any
+from typing import Optional
+import uuid
 import hashlib
 
 
-class SecurityTestCategory(Enum):
-    """Categories of security tests"""
-
-    PROPERTY_BASED = "property_based"
-    FUZZING = "fuzzing"
-    API_SECURITY = "api_security"
-    RACE_CONDITIONS = "race_conditions"
-    STATIC_ANALYSIS = "static_analysis"
-    SUPPLY_CHAIN = "supply_chain"
-    INJECTION = "injection"
-    AUTHENTICATION = "authentication"
-    AUTHORIZATION = "authorization"
-    CRYPTOGRAPHY = "cryptography"
-    BUSINESS_LOGIC = "business_logic"
-    INFRASTRUCTURE = "infrastructure"
-
-
 class Severity(Enum):
-    """Severity levels"""
-
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -38,36 +15,23 @@ class Severity(Enum):
 
 @dataclass
 class Finding:
-    """Represents a security finding"""
-
-    id: str
-    category: SecurityTestCategory
-    severity: Severity
     title: str
     description: str
-    affected_component: str
-    evidence: Any
-    remediation: str
-    cvss_score: float = 0.0
-    cwe_id: Optional[str] = None
-    cve_id: Optional[str] = None
-    threat_intel: Optional[dict] = None
-    references: List[str] = field(default_factory=list)
-    discovered_at: datetime = field(default_factory=datetime.now)
+    severity: Severity
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    evidence: Optional[str] = None
+    remediation: Optional[str] = None
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
+    def __post_init__(self):
+        if isinstance(self.severity, str):
+            self.severity = Severity(self.severity)
 
-@dataclass
-class TestSuite:
-    """A collection of related tests"""
-
-    name: str
-    category: SecurityTestCategory
-    tests: List[Callable]
-    description: str = ""
-    enabled: bool = True
-
-
-def generate_finding_hash(finding: Finding) -> str:
-    """Generates a unique hash for a finding to prevent duplicates."""
-    unique_string = f"{finding.category.value}|{finding.severity.value}|{finding.title}|{finding.affected_component}"
-    return hashlib.sha256(unique_string.encode()).hexdigest()
+    @property
+    def finding_hash(self) -> str:
+        """
+        Generate a unique hash for the finding.
+        """
+        hash_input = f"{self.title}-{self.file_path}-{self.line_number}-{self.description}"
+        return hashlib.sha256(hash_input.encode()).hexdigest()

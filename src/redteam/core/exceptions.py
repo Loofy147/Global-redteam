@@ -1,5 +1,3 @@
-# src/redteam/core/exceptions.py
-
 class RedTeamException(Exception):
     """Base exception for red team framework"""
     pass

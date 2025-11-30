@@ -1,18 +1,13 @@
 import logging
 import sys
 
-# Create a logger instance
-logger = logging.getLogger("redteam")
-logger.setLevel(logging.INFO)
-
-# Create a handler to output to the console
-handler = logging.StreamHandler(sys.stdout)
-
-# Create a formatter and set it for the handler
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
-handler.setFormatter(formatter)
 
-# Add the handler to the logger
-logger.addHandler(handler)
+logger = logging.getLogger("redteam")

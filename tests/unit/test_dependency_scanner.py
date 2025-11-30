@@ -1,13 +1,10 @@
-import unittest
-from unittest.mock import patch
-from urllib.parse import urlparse
+import pytest
 from src.redteam.scanners.dependency_scanner import DependencyScanner
+from src.redteam.core.finding import Severity
+from unittest.mock import patch, MagicMock
+import json
 import os
 
-class TestDependencyScanner(unittest.TestCase):
-    """
-    Tests for the DependencyScanner.
-    """
 
     @patch('requests.get')
     def test_scan_multi_ecosystem_dependency_confusion(self, mock_get):

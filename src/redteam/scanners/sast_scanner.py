@@ -1,61 +1,453 @@
-from .base import BaseScanner
-from ..core.finding import Finding, Severity, SecurityTestCategory
-from ai_vulnerability_discovery import AIVulnerabilityDiscovery
+"""
+AI-Powered Vulnerability Discovery Engine
+Uses machine learning and heuristics to discover novel attack vectors
+"""
 import os
+import math
+import re
+import ast
 import hashlib
-from typing import List
+from typing import List, Dict, Set, Tuple, Optional, Any
+from dataclasses import dataclass, field
+from collections import defaultdict
+from enum import Enum
+from src.redteam.utils.logger import logger
+from src.redteam.scanners.base import BaseScanner
+from src.redteam.core.finding import Finding, Severity
 
-class SastScanner(BaseScanner):
-    """Static analysis scanner."""
 
-    def __init__(self, config: dict):
-        super().__init__(config)
-        self.sast_engine = AIVulnerabilityDiscovery()
+class VulnerabilityPattern(Enum):
+    """Known vulnerability patterns"""
+    SQL_INJECTION = "sql_injection"
+    XSS = "cross_site_scripting"
+    COMMAND_INJECTION = "command_injection"
+    PATH_TRAVERSAL = "path_traversal"
+    XXEINJ = "xxe_injection"
+    SSRF = "server_side_request_forgery"
+    DESERIALIZATION = "unsafe_deserialization"
+    WEAK_CRYPTO = "weak_cryptography"
+    HARDCODED_SECRETS = "hardcoded_secrets"
+    RACE_CONDITION = "race_condition"
+    BUFFER_OVERFLOW = "buffer_overflow"
+    INTEGER_OVERFLOW = "integer_overflow"
+    JWT_ALG_NONE = "jwt_alg_none"
+    DOM_XSS = "dom_based_xss"
+
+
+@dataclass
+class CodeVulnerability:
+    """Represents a discovered vulnerability in code"""
+    pattern: VulnerabilityPattern
+    severity: Severity
+    file_path: str
+    line_number: int
+    code_snippet: str
+    explanation: str
+    remediation: str
+    confidence: float  # 0.0 to 1.0
+    context: Dict[str, Any] = field(default_factory=dict)
+
+
+class SASTScanner(BaseScanner):
+    """Advanced static code analysis for vulnerability discovery"""
 
     def get_required_config_fields(self) -> List[str]:
-        return ["static_analysis_path"]
+        return ["path"]
 
-    def _scan_implementation(self) -> list[Finding]:
-        """Run the SAST scanner and return a list of findings."""
-        target_path = self.config.get("static_analysis_path")
+    def _scan_implementation(self) -> List[Finding]:
         findings = []
-
-        if not os.path.isdir(target_path):
-            return findings
-
-        for root, _, files in os.walk(target_path):
-            for file in files:
-                if file.endswith((".py", ".js")):
-                    file_path = os.path.join(root, file)
-                    language = "javascript" if file.endswith(".js") else "python"
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            code = f.read()
-                    except (FileNotFoundError, IOError):
-                        continue
-
-                    results = self.sast_engine.discover_vulnerabilities(
-                        code, file_path, language=language
+        for file_path in self._get_files_to_scan():
+            with open(file_path, "r", encoding="utf-8") as f:
+                code = f.read()
+            language = self._get_language(file_path)
+            vulnerabilities = self.analyze_code(code, file_path, language)
+            for vuln in vulnerabilities:
+                findings.append(
+                    Finding(
+                        title=vuln.pattern.value,
+                        description=vuln.explanation,
+                        severity=vuln.severity,
+                        file_path=vuln.file_path,
+                        line_number=vuln.line_number,
+                        evidence=vuln.code_snippet,
+                        remediation=vuln.remediation,
                     )
-                    for vuln in results.get("static_analysis", []):
-                        finding = self._convert_code_vuln_to_finding(vuln)
-                        findings.append(finding)
+                )
         return findings
 
-    def _convert_code_vuln_to_finding(self, vuln: dict) -> Finding:
-        """Converts a CodeVulnerability object to a Finding object."""
-        pattern = vuln["pattern"]
-        code_snippet = vuln.get('code_snippet', '')
-        unique_str = f"{vuln['file_path']}:{vuln['line_number']}:{pattern.value}:{code_snippet}"
-        finding_id = f"sast-{hashlib.sha256(unique_str.encode()).hexdigest()[:16]}"
+    def _get_files_to_scan(self) -> List[str]:
+        path = self.config["path"]
+        if os.path.isfile(path):
+            return [path]
+        elif os.path.isdir(path):
+            filepaths = []
+            for root, _, files in os.walk(path):
+                for file in files:
+                    if file.endswith(".py"):
+                        filepaths.append(os.path.join(root, file))
+            return filepaths
+        return []
 
-        return Finding(
-            id=finding_id,
-            category=SecurityTestCategory.STATIC_ANALYSIS,
-            severity=Severity(vuln["severity"]),
-            title=f"{pattern.value.replace('_', ' ').title()} in {os.path.basename(vuln['file_path'])}",
-            description=vuln["explanation"],
-            affected_component=f"{vuln['file_path']}:{vuln['line_number']}",
-            evidence=code_snippet,
-            remediation=vuln['remediation'],
-        )
+    def _get_language(self, file_path: str) -> str:
+        if file_path.endswith(".py"):
+            return "python"
+        elif file_path.endswith(".js"):
+            return "javascript"
+        else:
+            return "unknown"
+
+    def _calculate_shannon_entropy(self, data: str) -> float:
+        """Calculate the Shannon entropy of a string."""
+        if not data:
+            return 0
+        entropy = 0
+        # Basic ASCII calculation
+        for x in range(256):
+            p_x = float(data.count(chr(x))) / len(data)
+            if p_x > 0:
+                entropy += -p_x * math.log(p_x, 2)
+        return entropy
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.vulnerabilities: List[CodeVulnerability] = []
+
+        # Dangerous function patterns
+        self.dangerous_patterns = {
+            VulnerabilityPattern.SQL_INJECTION: [
+                r'execute\s*\([^)]*\+[^)]*\)',  # String concatenation in execute
+                r'executemany\s*\([^)]*%[^)]*\)',  # String formatting in SQL
+                r'cursor\.execute\s*\([^)]*\.format',  # .format() in SQL
+                r'db\.raw\s*\(',  # Raw SQL queries
+                r'connection\.execute\s*\([^)]*\+',
+            ],
+            VulnerabilityPattern.XSS: [
+                r'Markup\s*\(',
+                r"return\s+f['\"].*<.*>.*['\"]",
+            ],
+            VulnerabilityPattern.COMMAND_INJECTION: [
+                r'os\.system\s*\(',
+                r'subprocess\.call\s*\([^)]*shell\s*=\s*True',
+                r'subprocess\.Popen\s*\([^)]*shell\s*=\s*True',
+                r'eval\s*\(',
+                r'exec\s*\(',
+            ],
+            VulnerabilityPattern.PATH_TRAVERSAL: [
+                r'open\s*\([^)]*\+',  # String concat in file operations
+                r'os\.path\.join\s*\([^)]*\+',
+                r'Path\s*\([^)]*\+',
+                r'read\s*\([^)]*\.\./',  # Direct .. usage
+            ],
+            VulnerabilityPattern.DESERIALIZATION: [
+                r'pickle\.loads?\s*\(',
+                r'yaml\.load\s*\([^)]*\)',  # Without Loader=SafeLoader
+                r'marshal\.loads?\s*\(',
+                r'jsonpickle\.decode',
+            ],
+            VulnerabilityPattern.WEAK_CRYPTO: [
+                r'hashlib\.md5\s*\(',
+                r'hashlib\.sha1\s*\(',
+                r'random\.random\s*\(',  # Using random instead of secrets
+                r'Cipher\s*\([^)]*MODE_ECB',  # ECB mode
+            ],
+            VulnerabilityPattern.HARDCODED_SECRETS: [
+                r'password\s*=\s*["\'][^"\']+',
+                r'api_key\s*=\s*["\'][^"\']+',
+                r'secret\s*=\s*["\'][^"\']+',
+                r'token\s*=\s*["\'][^"\']+',
+                r'app\.config\["SECRET_KEY"\]\s*=\s*".*"',
+            ],
+            # --- JavaScript Specific Patterns ---
+            VulnerabilityPattern.DOM_XSS: [
+                r'\.innerHTML\s*=\s*[^;]+',  # Unsafe assignment to innerHTML
+                r'document\.write\s*\(',      # Insecure document.write
+                r'eval\s*\(',                 # Use of eval
+            ],
+        }
+
+        # Dangerous imports
+        self.dangerous_imports = {
+            'pickle': 'Unsafe deserialization',
+            'marshal': 'Unsafe deserialization',
+            'yaml': 'Potentially unsafe if not using SafeLoader',
+            'eval': 'Code execution risk',
+            'exec': 'Code execution risk'
+        }
+
+    def analyze_code(self, code: str, file_path: str = "unknown", language: str = "python") -> List[CodeVulnerability]:
+        """Analyze code for vulnerabilities"""
+        lines = code.split('\n')
+        self.vulnerabilities = []
+
+        # Pattern-based detection
+        for pattern_type, patterns in self.dangerous_patterns.items():
+            for pattern in patterns:
+                for line_num, line in enumerate(lines, 1):
+                    if re.search(pattern, line):
+                        if "# nosec" in line:
+                            continue
+                        vuln = CodeVulnerability(
+                            pattern=pattern_type,
+                            severity=self._get_severity(pattern_type),
+                            file_path=file_path,
+                            line_number=line_num,
+                            code_snippet=line.strip(),
+                            explanation=self._get_explanation(pattern_type),
+                            remediation=self._get_remediation(pattern_type),
+                            confidence=0.8,
+                            context={'matched_pattern': pattern}
+                        )
+                        self.vulnerabilities.append(vuln)
+
+        # AST-based analysis for Python
+        if language == "python":
+            try:
+                tree = ast.parse(code)
+                self._analyze_ast(tree, file_path, lines)
+            except SyntaxError:
+                pass
+
+        return self.vulnerabilities
+
+    def _analyze_ast(self, tree: ast.AST, file_path: str, lines: List[str]):
+        """Analyze Abstract Syntax Tree for deeper insights"""
+
+        class VulnerabilityVisitor(ast.NodeVisitor):
+            def __init__(self, parent):
+                self.parent = parent
+                self.lines = lines
+                self.file_path = file_path
+                self.fstring_tainted_vars = set()
+                self.jwt_module_aliases = {'jwt'}
+                self.jwt_decode_aliases = set()
+
+            def visit_Constant(self, node):
+                """Analyze constants for hardcoded secrets."""
+                if isinstance(node.value, str):
+                    # Constants longer than 20 chars with high entropy are suspicious
+                    MIN_LENGTH = 20
+                    ENTROPY_THRESHOLD = 3.5
+
+                    if len(node.value) >= MIN_LENGTH:
+                        entropy = self.parent._calculate_shannon_entropy(node.value)
+                        if entropy > ENTROPY_THRESHOLD:
+                            line = self.lines[node.lineno - 1]
+                            if "# nosec" in line:
+                                return
+                            self.parent.vulnerabilities.append(CodeVulnerability(
+                                pattern=VulnerabilityPattern.HARDCODED_SECRETS,
+                                severity=Severity.HIGH,
+                                file_path=self.file_path,
+                                line_number=node.lineno,
+                                code_snippet=line.strip(),
+                                explanation=f"High entropy string detected (entropy: {entropy:.2f}). This could be a hardcoded secret.",
+                                remediation="Store secrets in environment variables or a secure vault, not in source code.",
+                                confidence=0.9
+                            ))
+                self.generic_visit(node)
+
+            def visit_Assign(self, node):
+                # Check if we are assigning an f-string to a variable
+                if isinstance(node.value, ast.JoinedStr):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            self.fstring_tainted_vars.add(target.id)
+
+                # Taint variables that come from request objects
+                if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute):
+                    if isinstance(node.value.func.value, ast.Attribute) and node.value.func.value.attr in ('args', 'form', 'json'):
+                        for target in node.targets:
+                            if isinstance(target, ast.Name):
+                                self.fstring_tainted_vars.add(target.id)
+
+                self.generic_visit(node)
+
+            def visit_Call(self, node):
+                """Analyze function calls"""
+                # Check for dangerous function calls
+                if isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+
+                    # Check eval/exec with user input
+                    if func_name in ['eval', 'exec']:
+                        line = self.lines[node.lineno - 1]
+                        if "# nosec" in line:
+                            return
+                        self.parent.vulnerabilities.append(CodeVulnerability(
+                            pattern=VulnerabilityPattern.COMMAND_INJECTION,
+                            severity=Severity.CRITICAL,
+                            file_path=self.file_path,
+                            line_number=node.lineno,
+                            code_snippet=self.lines[node.lineno - 1].strip() if node.lineno <= len(self.lines) else "",
+                            explanation=f"Use of dangerous {func_name}() function",
+                            remediation=f"Avoid using {func_name}(). Use safer alternatives.",
+                            confidence=0.95
+                        ))
+
+                # Check for SQL with string formatting
+                elif isinstance(node.func, ast.Attribute):
+                    if node.func.attr == 'execute':
+                        # Check if arguments use concatenation, f-strings, or tainted variables
+                        for arg in node.args:
+                            is_vulnerable = False
+                            explanation = ""
+                            if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+                                is_vulnerable = True
+                                explanation = "SQL query uses string concatenation"
+                            elif isinstance(arg, ast.JoinedStr):
+                                is_vulnerable = True
+                                explanation = "SQL query uses f-string formatting directly in execute call"
+                            elif isinstance(arg, ast.Name) and arg.id in self.fstring_tainted_vars:
+                                is_vulnerable = True
+                                explanation = "SQL query uses a variable tainted by an f-string"
+
+                            if is_vulnerable:
+                                line = self.lines[node.lineno - 1]
+                                if "# nosec" in line:
+                                    return
+                                self.parent.vulnerabilities.append(CodeVulnerability(
+                                    pattern=VulnerabilityPattern.SQL_INJECTION,
+                                    severity=Severity.CRITICAL,
+                                    file_path=self.file_path,
+                                    line_number=node.lineno,
+                                    code_snippet=self.lines[node.lineno - 1].strip() if node.lineno <= len(self.lines) else "",
+                                    explanation=explanation,
+                                    remediation="Use parameterized queries instead",
+                                    confidence=0.95
+                                ))
+
+                # Enhanced JWT 'alg=none' check
+                is_jwt_decode_call = False
+                if isinstance(node.func, ast.Attribute) and node.func.attr == 'decode':
+                    if isinstance(node.func.value, ast.Name) and node.func.value.id in self.jwt_module_aliases:
+                        is_jwt_decode_call = True
+                elif isinstance(node.func, ast.Name) and node.func.id in self.jwt_decode_aliases:
+                    is_jwt_decode_call = True
+
+                if is_jwt_decode_call:
+                    has_algorithms_kw = any(kw.arg == 'algorithms' for kw in node.keywords)
+                    if not has_algorithms_kw:
+                        line = self.lines[node.lineno - 1]
+                        if "# nosec" in line:
+                            return
+                        self.parent.vulnerabilities.append(CodeVulnerability(
+                            pattern=VulnerabilityPattern.JWT_ALG_NONE,
+                            severity=Severity.CRITICAL,
+                            file_path=self.file_path,
+                            line_number=node.lineno,
+                            code_snippet=self.lines[node.lineno - 1].strip(),
+                            explanation="JWT decoding without an explicit 'algorithms' parameter is vulnerable to 'alg=none' attacks.",
+                            remediation="Always specify the expected list of algorithms, e.g., algorithms=['HS256'].",
+                            confidence=0.98
+                        ))
+
+                self.generic_visit(node)
+
+            def visit_ImportFrom(self, node):
+                """Handle 'from jwt import decode' cases"""
+                if node.module == 'jwt':
+                    for alias in node.names:
+                        if alias.name == 'decode':
+                            self.jwt_decode_aliases.add(alias.asname or alias.name)
+                self.generic_visit(node)
+
+            def visit_Import(self, node):
+                """Check for dangerous imports"""
+                for alias in node.names:
+                    if alias.name == 'jwt':
+                        self.jwt_module_aliases.add(alias.asname or alias.name)
+                    if alias.name in self.parent.dangerous_imports:
+                        line = self.lines[node.lineno - 1]
+                        if "# nosec" in line:
+                            return
+                        self.parent.vulnerabilities.append(CodeVulnerability(
+                            pattern=VulnerabilityPattern.DESERIALIZATION,
+                            severity=Severity.MEDIUM,
+                            file_path=self.file_path,
+                            line_number=node.lineno,
+                            code_snippet=self.lines[node.lineno - 1].strip() if node.lineno <= len(self.lines) else "",
+                            explanation=self.parent.dangerous_imports[alias.name],
+                            remediation="Use safer alternatives",
+                            confidence=0.7
+                        ))
+                self.generic_visit(node)
+
+            def visit_Return(self, node):
+                """Check for tainted data being returned"""
+                if isinstance(node.value, ast.Name) and node.value.id in self.fstring_tainted_vars:
+                    line = self.lines[node.lineno - 1]
+                    if "# nosec" in line:
+                        return
+                    self.parent.vulnerabilities.append(CodeVulnerability(
+                        pattern=VulnerabilityPattern.XSS,
+                        severity=Severity.HIGH,
+                        file_path=self.file_path,
+                        line_number=node.lineno,
+                        code_snippet=self.lines[node.lineno - 1].strip() if node.lineno <= len(self.lines) else "",
+                        explanation="Potential XSS: Tainted data from request is returned without sanitization",
+                        remediation="Use a templating engine like Jinja2 with auto-escaping, or explicitly sanitize user input with a library like Bleach.",
+                        confidence=0.85,
+                    ))
+                self.generic_visit(node)
+
+        visitor = VulnerabilityVisitor(self)
+        visitor.visit(tree)
+
+    def _get_severity(self, pattern: VulnerabilityPattern) -> Severity:
+        """Get severity level for pattern"""
+        critical_patterns = [
+            VulnerabilityPattern.SQL_INJECTION,
+            VulnerabilityPattern.COMMAND_INJECTION,
+            VulnerabilityPattern.DESERIALIZATION,
+            VulnerabilityPattern.JWT_ALG_NONE,
+            VulnerabilityPattern.HARDCODED_SECRETS
+        ]
+
+        if pattern in critical_patterns:
+            return Severity.CRITICAL
+        elif pattern in [VulnerabilityPattern.XSS, VulnerabilityPattern.SSRF]:
+            return Severity.HIGH
+        elif pattern in [VulnerabilityPattern.WEAK_CRYPTO, VulnerabilityPattern.PATH_TRAVERSAL]:
+            return Severity.MEDIUM
+        else:
+            return Severity.LOW
+
+    def _get_explanation(self, pattern: VulnerabilityPattern) -> str:
+        """Get explanation for vulnerability pattern"""
+        explanations = {
+            VulnerabilityPattern.SQL_INJECTION:
+                "SQL injection allows attackers to manipulate database queries",
+            VulnerabilityPattern.COMMAND_INJECTION:
+                "Command injection enables arbitrary system command execution",
+            VulnerabilityPattern.PATH_TRAVERSAL:
+                "Path traversal allows access to files outside intended directory",
+            VulnerabilityPattern.DESERIALIZATION:
+                "Unsafe deserialization can lead to remote code execution",
+            VulnerabilityPattern.WEAK_CRYPTO:
+                "Weak cryptographic algorithms are vulnerable to attacks",
+            VulnerabilityPattern.HARDCODED_SECRETS:
+                "Hardcoded secrets can be extracted from source code",
+            VulnerabilityPattern.DOM_XSS:
+                "DOM-based XSS allows attackers to execute arbitrary scripts in the user's browser",
+        }
+        return explanations.get(pattern, "Security vulnerability detected")
+
+    def _get_remediation(self, pattern: VulnerabilityPattern) -> str:
+        """Get remediation advice"""
+        remediations = {
+            VulnerabilityPattern.SQL_INJECTION:
+                "Use parameterized queries or ORM. Never concatenate user input into SQL.",
+            VulnerabilityPattern.COMMAND_INJECTION:
+                "Avoid shell=True. Use subprocess with argument lists. Validate input.",
+            VulnerabilityPattern.PATH_TRAVERSAL:
+                "Validate and sanitize file paths. Use os.path.abspath() and check prefix.",
+            VulnerabilityPattern.DESERIALIZATION:
+                "Use JSON instead of pickle. If pickle is necessary, sign/verify data.",
+            VulnerabilityPattern.WEAK_CRYPTO:
+                "Use SHA-256 or better. Use secrets module for random values.",
+            VulnerabilityPattern.HARDCODED_SECRETS:
+                "Use environment variables or secrets management systems.",
+            VulnerabilityPattern.DOM_XSS:
+                "Sanitize user input before assigning it to `innerHTML` or using `document.write`. Avoid `eval`.",
+        }
+        return remediations.get(pattern, "Follow security best practices")
