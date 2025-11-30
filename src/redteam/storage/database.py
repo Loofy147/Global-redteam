@@ -14,20 +14,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# --- Custom Datetime Adapters for SQLite ---
-
-def adapt_datetime_iso(dt_obj):
-    """Adapt datetime.datetime to timezone-aware ISO 8601 string."""
-    return dt_obj.isoformat()
-
-def convert_datetime_iso(iso_str):
-    """Convert ISO 8601 string back to datetime.datetime object."""
-    return datetime.fromisoformat(iso_str.decode('utf-8'))
-
-# Register the new adapters
-sqlite3.register_adapter(datetime, adapt_datetime_iso)
-sqlite3.register_converter("timestamp", convert_datetime_iso)
-
 
 class DatabaseError(Exception):
     """Base exception for database operations"""
@@ -45,7 +31,7 @@ class ConnectionPool:
 
     def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection"""
-        conn = sqlite3.connect(self.db_path, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")  # Better concurrency
@@ -319,7 +305,7 @@ class SecureDatabase:
             # Safe to use f-string for field name (validated above)
             # But use parameterized query for search term
             query = f"SELECT * FROM findings WHERE {field} LIKE ? ORDER BY severity, last_seen DESC"
-            cursor.execute(query, (f"%{search_term}%",))  # nosec
+            cursor.execute(query, (f"%{search_term}%",)) # nosec
 
             return [dict(row) for row in cursor.fetchall()]
 
@@ -378,3 +364,50 @@ class SecureDatabase:
         with self.pool.get_connection() as conn:
             conn.execute("VACUUM")
             logger.info("Database vacuumed")
+
+
+# Example usage demonstrating security
+if __name__ == "__main__":
+    import hashlib
+
+    # Initialize secure database
+    db = SecureDatabase("secure_findings.db")
+
+    # Save a finding (all parameterized - safe)
+    finding_hash = hashlib.sha256(b"test_finding").hexdigest()
+
+    db.save_finding(
+        finding_id="TEST-001",
+        finding_hash=finding_hash,
+        category="api_security",
+        severity="critical",
+        title="SQL Injection in /api/users",
+        description="The endpoint is vulnerable to SQL injection",
+        affected_component="/api/users",
+        evidence="Payload: ' OR '1'='1",
+        remediation="Use parameterized queries",
+        cvss_score=9.1,
+        cwe_id="CWE-89"
+    )
+
+    # Search safely (parameterized)
+    results = db.search_findings("SQL", field="title")
+    print(f"Found {len(results)} results")
+
+    # Get summary
+    stats = db.get_summary_statistics()
+    print(f"Summary: {stats}")
+
+    # Demonstrate that SQL injection is prevented
+    try:
+        # This would fail in old version
+        malicious_input = "'; DROP TABLE findings; --"
+        results = db.search_findings(malicious_input, field="title")
+        print(f"Safe: Query returned {len(results)} results without executing injection")
+    except Exception as e:
+        print(f"Error: {e}")
+
+    print("\n✓ All database operations use parameterized queries")
+    print("✓ SQL injection is prevented")
+    print("✓ Connection pooling implemented")
+    print("✓ Error handling in place")

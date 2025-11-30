@@ -1,77 +1,52 @@
-import unittest
-from unittest.mock import patch
-from urllib.parse import urlparse
+import pytest
 from src.redteam.scanners.dependency_scanner import DependencyScanner
+from src.redteam.core.finding import Severity
+from unittest.mock import patch, MagicMock
+import json
 import os
 
-class TestDependencyScanner(unittest.TestCase):
-    """
-    Tests for the DependencyScanner.
-    """
 
-    @patch('requests.get')
-    def test_scan_multi_ecosystem_dependency_confusion(self, mock_get):
-        """
-        Tests that the scanner correctly identifies dependency confusion vulnerabilities
-        in both Python and Node.js projects.
-        """
-        def mock_requests_get(url, **kwargs):
-            mock_response = unittest.mock.Mock()
-            if "pypi.org" in url:
-                if "requests" in url or "flask" in url:
-                    mock_response.status_code = 200
-                    mock_response.json.return_value = {'info': {'version': '1.0.0'}}
-                else:
-                    mock_response.status_code = 404
-            elif urlparse(url).hostname == "registry.npmjs.org":
-                if "express" in url or "jest" in url:
-                    mock_response.status_code = 200
-                else:
-                    mock_response.status_code = 404
-            return mock_response
+@pytest.fixture
+def requirements_file():
+    requirements_content = """
+requests==2.32.5
+numpy==1.20.3
+"""
+    file_path = "test_requirements.txt"
+    with open(file_path, "w") as f:
+        f.write(requirements_content)
+    yield file_path
+    os.remove(file_path)
 
-        mock_get.side_effect = mock_requests_get
 
-        # Create dummy dependency files for the scanner to find
-        os.makedirs("./test_scan_dir/vulnerable_app", exist_ok=True)
-        with open("./test_scan_dir/vulnerable_app/requirements.txt", "w") as f:
-            f.write("requests==2.28.1\nflask==2.1.2")
-        with open("./test_scan_dir/vulnerable_app/package.json", "w") as f:
-            f.write("""
-{
-  "dependencies": {
-    "express": "4.17.1",
-    "internal-package": "1.0.0"
-  },
-  "devDependencies": {
-    "jest": "27.0.6"
-  }
-}
-            """)
+@patch('requests.post')
+def test_dependency_scanner(mock_requests_post, requirements_file):
+    def mock_post_side_effect(url, data):
+        payload = json.loads(data)
+        if payload["package"]["name"] == "requests":
+            response = MagicMock()
+            response.status_code = 200
+            response.json.return_value = {
+                "vulns": [
+                    {
+                        "id": "OSV-2021-1234",
+                        "summary": "Request vulnerability",
+                        "database_specific": {"severity": "HIGH"}
+                    }
+                ]
+            }
+            return response
+        else:
+            response = MagicMock()
+            response.status_code = 200
+            response.json.return_value = {}
+            return response
 
-        scanner = DependencyScanner(config={'static_analysis_path': './test_scan_dir'})
-        findings = scanner.scan()
+    mock_requests_post.side_effect = mock_post_side_effect
 
-        self.assertEqual(len(findings), 4)
+    scanner = DependencyScanner(config={"path": os.path.dirname(requirements_file)})
+    findings = scanner.scan()
 
-        pypi_findings = [f for f in findings if f.affected_component.endswith("requirements.txt")]
-        npm_findings = [f for f in findings if f.affected_component.endswith("package.json")]
-
-        self.assertEqual(len(pypi_findings), 2)
-        pypi_packages = {f.evidence.split(",")[0].split(": ")[1] for f in pypi_findings}
-        self.assertIn("requests", pypi_packages)
-        self.assertIn("flask", pypi_packages)
-
-        self.assertEqual(len(npm_findings), 2)
-        npm_packages = {f.evidence.split(",")[0].split(": ")[1] for f in npm_findings}
-        self.assertIn("express", npm_packages)
-        self.assertIn("jest", npm_packages)
-
-        # Clean up dummy files
-        os.remove("./test_scan_dir/vulnerable_app/requirements.txt")
-        os.remove("./test_scan_dir/vulnerable_app/package.json")
-        os.rmdir("./test_scan_dir/vulnerable_app")
-        os.rmdir("./test_scan_dir")
-
-if __name__ == '__main__':
-    unittest.main()
+    assert len(findings) == 1
+    assert findings[0].title == "Vulnerable Dependency: requests==2.32.5"
+    assert findings[0].severity == Severity.HIGH

@@ -245,7 +245,7 @@ class Mutator:
 
 
 from .base import BaseScanner
-from ..core.finding import Finding, Severity, SecurityTestCategory
+from ..core.finding import Finding, Severity
 from typing import List
 
 class CoverageGuidedFuzzer(BaseScanner):
@@ -253,7 +253,7 @@ class CoverageGuidedFuzzer(BaseScanner):
 
     def __init__(self, config: dict):
         super().__init__(config)
-        self.target = self._get_target_function(config.get("target_function"))
+        self.target = config.get("target_function")
         self.timeout = config.get("timeout", 1.0)
         self.max_iterations = config.get("max_iterations", 10000)
         self.mutation_strategies = config.get("mutation_strategies", list(MutationStrategy))
@@ -272,20 +272,6 @@ class CoverageGuidedFuzzer(BaseScanner):
             "timeouts": 0,
             "generation": 0,
         }
-
-    def _get_target_function(self, target_function_name: str) -> Callable[[bytes], Any]:
-        """Maps a target function name to an actual function."""
-        # In a real-world scenario, this might involve dynamic imports
-        def vulnerable_parser(data: bytes):
-            if b"CRASH" in data:
-                raise ValueError("Fuzzer found a crash!")
-
-        target_functions = {"vulnerable_parser": vulnerable_parser}
-
-        if target_function_name not in target_functions:
-            raise ValueError(f"Fuzzing target function '{target_function_name}' not found.")
-
-        return target_functions[target_function_name]
 
     def add_seed(self, data: bytes):
         """Add initial seed input to corpus"""
@@ -478,11 +464,9 @@ class CoverageGuidedFuzzer(BaseScanner):
             finding_id = f"fuzz-{hashlib.sha256(crash.input_data).hexdigest()[:16]}"
             finding = Finding(
                 id=finding_id,
-                category=SecurityTestCategory.FUZZING,
-                severity=Severity.HIGH,
                 title="Fuzzer discovered a crash",
                 description=str(crash.exception),
-                affected_component=self.config.get("target_function"),
+                severity=Severity.HIGH,
                 evidence=crash.input_data.hex(),
                 remediation="Investigate crash and fix the underlying bug.",
             )
@@ -542,7 +526,11 @@ if __name__ == "__main__":
     print("=" * 80)
 
     fuzzer = CoverageGuidedFuzzer(
-        target_function=vulnerable_parser, timeout=0.1, max_iterations=1000
+        config={
+            "target_function": vulnerable_parser,
+            "max_iterations": 1000,
+            "timeout": 0.1,
+        }
     )
 
     # Add seed inputs
@@ -561,7 +549,11 @@ if __name__ == "__main__":
     print("=" * 80)
 
     fuzzer2 = CoverageGuidedFuzzer(
-        target_function=vulnerable_calculator, timeout=0.1, max_iterations=1000
+        config={
+            "target_function": vulnerable_calculator,
+            "max_iterations": 1000,
+            "timeout": 0.1,
+        }
     )
 
     fuzzer2.add_seed(b"10:20")

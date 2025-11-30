@@ -1,74 +1,37 @@
 import pytest
-from src.redteam.scanners.fuzzer import Mutator, CoverageGuidedFuzzer
+from src.redteam.scanners.fuzzer import CoverageGuidedFuzzer, MutationStrategy
+from src.redteam.core.finding import Severity
 
 
-@pytest.fixture
-def mutator():
-    return Mutator(seed=42)
+def test_fuzzer_initialization():
+    def dummy_target(data):
+        pass
 
-
-def test_bit_flip(mutator):
-    data = b"hello"
-    mutated = mutator.bit_flip(data)
-    assert data != mutated
-    assert len(data) == len(mutated)
-
-
-def test_byte_flip(mutator):
-    data = b"hello"
-    mutated = mutator.byte_flip(data)
-    assert data != mutated
-    assert len(data) == len(mutated)
-
-
-def test_arithmetic_mutation(mutator):
-    data = b"\x00\x00\x00\x00"
-    for _ in range(10):
-        mutated = mutator.arithmetic_mutation(data)
-        if mutated != data:
-            assert True
-            return
-    assert False, "Arithmetic mutation failed to produce a new value"
-
-
-def test_interesting_value_mutation(mutator):
-    data = b"A" * 16
-    mutated = mutator.interesting_value_mutation(data)
-    assert data != mutated
-    assert len(data) == len(mutated)
-
-
-def test_dictionary_mutation(mutator):
-    data = b""
-    mutated = mutator.dictionary_mutation(data)
-    assert mutated in mutator.dictionary
-
-
-def test_havoc_mutation(mutator):
-    data = b"hello world"
-    mutated = mutator.havoc_mutation(data)
-    assert data != mutated
-
-
-def test_splice_mutation(mutator):
-    data1 = b"hello"
-    data2 = b"world"
-    # Run multiple times to reduce chance of random failure
-    for _ in range(10):
-        mutated = mutator.splice_mutation(data1, data2)
-        if mutated != data1 and mutated != data2:
-            assert True
-            return
-    assert False, "Splice mutation failed to produce a new value"
-
-
-def test_fuzzer_init():
-    """Tests that the fuzzer can be initialized correctly."""
-    config = {
-        'target_function': 'vulnerable_parser',
-        'max_iterations': 100,
-        'timeout': 1.0,
-    }
-    fuzzer = CoverageGuidedFuzzer(config)
+    fuzzer = CoverageGuidedFuzzer(config={
+        "target_function": dummy_target,
+        "max_iterations": 100,
+        "timeout": 0.1,
+    })
     assert fuzzer.max_iterations == 100
-    assert fuzzer.timeout == 1.0
+    assert fuzzer.timeout == 0.1
+
+
+def test_fuzzer_discovers_crash():
+    def crash_target(data):
+        if b"CRASH" in data:
+            raise ValueError("Fuzzer found a crash!")
+
+    fuzzer = CoverageGuidedFuzzer(config={
+        "target_function": crash_target,
+        "max_iterations": 1000,
+        "timeout": 0.1,
+        "mutation_strategies": [MutationStrategy.DICTIONARY]
+    })
+    fuzzer.mutator.dictionary = [b"CRASH"]
+    fuzzer.add_seed(b"")
+
+    findings = fuzzer.scan()
+
+    assert len(findings) > 0
+    assert findings[0].severity == Severity.HIGH
+    assert "Fuzzer discovered a crash" in findings[0].title

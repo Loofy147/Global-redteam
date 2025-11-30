@@ -1,20 +1,23 @@
-import pytest
 import time
 from src.redteam.utils.rate_limiter import RateLimiter
 
 
-def test_rate_limiter():
-    """Tests that the rate limiter correctly limits the number of requests."""
-    rate_limiter = RateLimiter(max_requests=5, time_window=1)
-
-    # First 5 requests should be allowed
+def test_rate_limiter_allows_requests_within_limit():
+    limiter = RateLimiter(max_requests=5, time_window=1)
     for _ in range(5):
-        assert rate_limiter.acquire() is True
+        assert limiter.acquire() is True
 
-    # 6th request should be blocked
-    start_time = time.time()
-    assert rate_limiter.acquire() is True
-    end_time = time.time()
 
-    # Check that the 6th request was delayed
-    assert end_time - start_time >= 1.0
+def test_rate_limiter_blocks_requests_exceeding_limit():
+    limiter = RateLimiter(max_requests=2, time_window=1)
+    assert limiter.acquire() is True
+    assert limiter.acquire() is True
+    assert limiter.acquire(block=False) is False
+
+
+def test_rate_limiter_allows_requests_after_window():
+    limiter = RateLimiter(max_requests=1, time_window=0.1)
+    assert limiter.acquire() is True
+    assert limiter.acquire(block=False) is False
+    time.sleep(0.1)
+    assert limiter.acquire() is True
