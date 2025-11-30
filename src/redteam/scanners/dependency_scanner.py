@@ -1,28 +1,31 @@
 from src.redteam.scanners.base import BaseScanner
 from typing import List
 from src.redteam.core.finding import Finding, Severity
+from src.redteam.utils.rate_limiter import RateLimiter
 import requests
 import json
 import os
 
 
 class DependencyScanner(BaseScanner):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.rate_limiter = RateLimiter(
+            max_requests=self.config.get("rate_limit", 10),
+            time_window=1
+        )
+
     def get_required_config_fields(self) -> List[str]:
         return ["path"]
 
     def _scan_implementation(self) -> List[Finding]:
         findings = []
-
-        # Scan requirements.txt
-        requirements_file = os.path.join(self.config["path"], "requirements.txt")
-        if os.path.exists(requirements_file):
-            findings.extend(self._scan_requirements(requirements_file))
-
-        # Scan package.json
-        package_json_file = os.path.join(self.config["path"], "package.json")
-        if os.path.exists(package_json_file):
-            findings.extend(self._scan_package_json(package_json_file))
-
+        for root, _, files in os.walk(self.config["path"]):
+            for file in files:
+                if file == "requirements.txt":
+                    findings.extend(self._scan_requirements(os.path.join(root, file)))
+                elif file == "package.json":
+                    findings.extend(self._scan_package_json(os.path.join(root, file)))
         return findings
 
     def _scan_requirements(self, file_path: str) -> List[Finding]:
@@ -72,6 +75,7 @@ class DependencyScanner(BaseScanner):
         return None, None
 
     def _check_osv(self, package: str, version: str, ecosystem: str) -> List[dict]:
+        self.rate_limiter.acquire()
         url = "https://api.osv.dev/v1/query"
         query = {
             "version": version,

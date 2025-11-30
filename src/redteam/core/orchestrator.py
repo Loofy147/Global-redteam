@@ -7,6 +7,8 @@ from src.redteam.scanners.sast_scanner import SASTScanner
 from src.redteam.scanners.api_scanner import APIScanner
 from src.redteam.scanners.dependency_scanner import DependencyScanner
 from src.redteam.scanners.fuzzer import CoverageGuidedFuzzer
+from src.redteam.scanners.formal_verifier import FormalVerifier
+from src.redteam.scanners.llm_autonomous_hunter import LLMAutonomousHunter
 
 
 class RedTeamOrchestrator:
@@ -28,7 +30,10 @@ class RedTeamOrchestrator:
 
     def run_scans(self):
         for scanner in self.scanners:
-            self.findings.extend(scanner.scan())
+            try:
+                self.findings.extend(scanner.scan())
+            except Exception as e:
+                logger.error(f"Error running scanner {scanner.__class__.__name__}: {e}")
 
     def run_full_assessment(self) -> Dict[str, Any]:
         """Run complete meta-assessment"""
@@ -151,6 +156,15 @@ if __name__ == "__main__":
         "timeout": config.fuzz_timeout,
     })
     orchestrator.register_scanner(fuzzer)
+
+    formal_verifier = FormalVerifier(config={
+        "static_analysis_path": ".",
+        "verification_engine": "frama-c"
+    })
+    orchestrator.register_scanner(formal_verifier)
+
+    llm_hunter = LLMAutonomousHunter(config={"static_analysis_path": "."})
+    orchestrator.register_scanner(llm_hunter)
 
 
     # Run assessment

@@ -162,8 +162,10 @@ class AdversarialGenerator:
 
 from .base import BaseScanner
 from ..core.finding import Finding, Severity, SecurityTestCategory
+from ..utils.rate_limiter import RateLimiter
 import hashlib
 from typing import List
+
 
 class PropertyTester(BaseScanner):
     """Advanced property-based testing framework"""
@@ -173,12 +175,17 @@ class PropertyTester(BaseScanner):
         self.iterations = self.config.get("iterations", 1000)
         self.generator = AdversarialGenerator()
         self.failures: List[TestResult] = []
+        self.rate_limiter = RateLimiter(
+            max_requests=self.config.get("rate_limit", 100),
+            time_window=1
+        )
 
     def test_idempotency(self, func: Callable, input_gen: Callable) -> List[TestResult]:
         """Test that f(f(x)) == f(x)"""
         results = []
 
         for _ in range(self.iterations):
+            self.rate_limiter.acquire()
             x = input_gen()
             try:
                 first = func(x)
@@ -218,6 +225,7 @@ class PropertyTester(BaseScanner):
         results = []
 
         for _ in range(self.iterations):
+            self.rate_limiter.acquire()
             a, b = input_gen(), input_gen()
             try:
                 result_ab = func(a, b)
@@ -255,6 +263,7 @@ class PropertyTester(BaseScanner):
         ]
 
         for malicious_input in injection_inputs:
+            self.rate_limiter.acquire()
             try:
                 output_val = func(malicious_input)
 
@@ -298,6 +307,7 @@ class PropertyTester(BaseScanner):
         ]
 
         for dos_input in exhaustion_inputs:
+            self.rate_limiter.acquire()
             import time
 
             start = time.time()
@@ -356,6 +366,7 @@ class PropertyTester(BaseScanner):
         ]
 
         for boundary_input in boundary_inputs:
+            self.rate_limiter.acquire()
             try:
                 output = func(boundary_input)
 
@@ -499,8 +510,9 @@ class PropertyTester(BaseScanner):
                 severity=Severity.HIGH,
                 title=f"Property test failed: {failure.vulnerability_type.value}",
                 description=f"Input: {failure.input_value}, Output: {failure.output_value}",
-                affected_component="vulnerable_sql_query",
-                evidence=failure.input_value,
+                file_path="vulnerable_sql_query",
+                line_number=0,
+                evidence=str(failure.input_value),
                 remediation="Fix the code to satisfy the tested property.",
             )
             findings.append(finding)

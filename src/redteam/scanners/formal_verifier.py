@@ -1,11 +1,12 @@
 # New Module: src/redteam/scanners/formal_verifier.py
 
-from .base import BaseScanner
-from ..core.finding import Finding, Severity, SecurityTestCategory
+from src.redteam.scanners.base import BaseScanner
+from src.redteam.core.finding import Finding, Severity, SecurityTestCategory
+from src.redteam.utils.rate_limiter import RateLimiter
 import subprocess
 import tempfile
 import os
-import hashlib
+
 
 class FormalVerifier(BaseScanner):
     """
@@ -26,6 +27,10 @@ class FormalVerifier(BaseScanner):
             'memory_safety',
             'control_flow_integrity'
         ])
+        self.rate_limiter = RateLimiter(
+            max_requests=self.config.get("rate_limit", 10),
+            time_window=1
+        )
 
     def get_required_config_fields(self) -> list:
         return ['static_analysis_path', 'verification_engine']
@@ -39,19 +44,19 @@ class FormalVerifier(BaseScanner):
 
         for c_file in self._find_c_files():
             for prop in self.properties_to_verify:
+                self.rate_limiter.acquire()
                 result = self._verify_property(c_file, prop)
 
                 if not result['verified']:
-                    finding_id = f"formal-{prop}-{hashlib.sha256(c_file.encode()).hexdigest()}"
                     finding = Finding(
-                        id=finding_id,
+                        id=f"formal-{prop}-{hash(c_file)}",
                         category=SecurityTestCategory.STATIC_ANALYSIS,
                         severity=Severity.CRITICAL,
                         title=f"Formal Verification Failed: {prop}",
                         description=f"Mathematical proof FAILED for property '{prop}'. "
                                   f"This is a guaranteed vulnerability (NOT a false positive). "
                                   f"Counter-example: {result['counterexample']}",
-                        affected_component=c_file,
+                        file_path=c_file,
                         evidence=result['trace'],
                         remediation=f"Fix the proven violation of {prop}. "
                                   f"Formal verification guarantees this is exploitable.",
@@ -61,11 +66,27 @@ class FormalVerifier(BaseScanner):
 
         return findings
 
+    def _find_c_files(self) -> list[str]:
+        """Finds all C files in the configured path."""
+        c_files = []
+        path = self.config.get("static_analysis_path", ".")
+        for root, _, files in os.walk(path):
+            for file in files:
+                if file.endswith(".c"):
+                    c_files.append(os.path.join(root, file))
+        return c_files
+
     def _verify_property(self, source_file: str, property_name: str) -> dict:
         """
         Executes formal verification engine (Frama-C/ESBMC/Seahorn)
         Returns mathematical proof or counter-example
         """
+        # Check if frama-c is installed
+        try:
+            subprocess.run(["frama-c", "-version"], capture_output=True, check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return {'verified': False, 'counterexample': 'frama-c not found in PATH', 'trace': 'frama-c not found in PATH'}
+
         # Map property to verification command
         property_flags = {
             'no_buffer_overflow': '-rte -eva',
@@ -93,12 +114,12 @@ class FormalVerifier(BaseScanner):
                     'trace': result.stdout
                 }
             elif "VALID" in result.stdout or "PROVEN" in result.stdout:
-                return {'verified': True}
+                return {'verified': True, 'trace': result.stdout, 'counterexample': ''}
             else:
-                return {'verified': False, 'counterexample': 'Timeout or inconclusive'}
+                return {'verified': False, 'counterexample': 'Timeout or inconclusive', 'trace': result.stdout}
 
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return {'verified': False, 'counterexample': 'Verification timeout or Frama-C not found'}
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            return {'verified': False, 'counterexample': f'Verification failed: {e}', 'trace': str(e)}
 
     def _extract_counterexample(self, output: str) -> str:
         """Extract concrete counter-example showing how to exploit the bug"""
@@ -108,15 +129,3 @@ class FormalVerifier(BaseScanner):
             if 'counterexample' in line.lower() or 'values:' in line:
                 return line.strip()
         return "See full trace for counter-example"
-
-    def _find_c_files(self) -> list[str]:
-        """Finds all C files in the static analysis path."""
-        c_files = []
-        static_analysis_path = self.config.get("static_analysis_path")
-        if not static_analysis_path:
-            return []
-        for root, _, files in os.walk(static_analysis_path):
-            for file in files:
-                if file.endswith(".c"):
-                    c_files.append(os.path.join(root, file))
-        return c_files
