@@ -247,6 +247,8 @@ class Mutator:
 from .base import BaseScanner
 from ..core.finding import Finding, Severity
 from typing import List
+from ..utils.rate_limiter import RateLimiter
+
 
 class CoverageGuidedFuzzer(BaseScanner):
     """Main fuzzing engine with coverage guidance"""
@@ -257,7 +259,10 @@ class CoverageGuidedFuzzer(BaseScanner):
         self.timeout = config.get("timeout", 1.0)
         self.max_iterations = config.get("max_iterations", 10000)
         self.mutation_strategies = config.get("mutation_strategies", list(MutationStrategy))
-
+        self.rate_limiter = RateLimiter(
+            max_requests=self.config.get("rate_limit", 100),
+            time_window=1
+        )
         self.mutator = Mutator()
         self.coverage_tracker = CoverageTracker()
 
@@ -326,6 +331,7 @@ class CoverageGuidedFuzzer(BaseScanner):
 
     def fuzz_cycle(self) -> bool:
         """Single fuzzing iteration"""
+        self.rate_limiter.acquire()
         # Select input
         parent = self.select_input_from_corpus()
 
@@ -467,6 +473,8 @@ class CoverageGuidedFuzzer(BaseScanner):
                 title="Fuzzer discovered a crash",
                 description=str(crash.exception),
                 severity=Severity.HIGH,
+                file_path=self.target.__name__,
+                line_number=0,
                 evidence=crash.input_data.hex(),
                 remediation="Investigate crash and fix the underlying bug.",
             )

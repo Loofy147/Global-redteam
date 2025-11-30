@@ -14,6 +14,7 @@ from enum import Enum
 from src.redteam.utils.logger import logger
 from src.redteam.scanners.base import BaseScanner
 from src.redteam.core.finding import Finding, Severity
+from src.redteam.utils.rate_limiter import RateLimiter
 
 
 class VulnerabilityPattern(Enum):
@@ -57,6 +58,7 @@ class SASTScanner(BaseScanner):
     def _scan_implementation(self) -> List[Finding]:
         findings = []
         for file_path in self._get_files_to_scan():
+            self.rate_limiter.acquire()
             with open(file_path, "r", encoding="utf-8") as f:
                 code = f.read()
             language = self._get_language(file_path)
@@ -111,6 +113,10 @@ class SASTScanner(BaseScanner):
     def __init__(self, config):
         super().__init__(config)
         self.vulnerabilities: List[CodeVulnerability] = []
+        self.rate_limiter = RateLimiter(
+            max_requests=self.config.get("rate_limit", 10),
+            time_window=1
+        )
 
         # Dangerous function patterns
         self.dangerous_patterns = {

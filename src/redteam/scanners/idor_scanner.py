@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Any, Optional
 
 from .base import BaseScanner
+from ..core.finding import Finding, Severity
 from ..utils.rate_limiter import RateLimiter
 from ..utils.api_utils import (
     discover_endpoints_from_swagger,
@@ -70,7 +71,7 @@ class IDORScanner(BaseScanner):
 
         return potential_endpoints
 
-    def _test_endpoint_for_idor(self, endpoint: APIEndpoint) -> Optional[Dict]:
+    def _test_endpoint_for_idor(self, endpoint: APIEndpoint) -> Optional[Finding]:
         """
         Tests a single endpoint for IDOR vulnerabilities.
         """
@@ -97,15 +98,13 @@ class IDORScanner(BaseScanner):
 
             # If we get a 2xx response, it's a potential IDOR
             if 200 <= response["status_code"] < 300:
-                return {
-                    "vulnerability": "Insecure Direct Object Reference (IDOR)",
-                    "severity": "High",
-                    "endpoint": f"{endpoint.method} {endpoint.path}",
-                    "details": f"User with token '{self.primary_user_token[:10]}...' was able to access a resource belonging to another user at '{modified_path}'.",
-                    "evidence": {
-                        "status_code": response["status_code"],
-                        "response_body": response["body"],
-                    },
-                }
+                return Finding(
+                    title="Insecure Direct Object Reference (IDOR)",
+                    description=f"User with token '{self.primary_user_token[:10]}...' was able to access a resource belonging to another user at '{modified_path}'.",
+                    severity=Severity.HIGH,
+                    file_path=self.config.get("swagger_file"),
+                    evidence=f"Status code: {response['status_code']}",
+                    remediation=f"Ensure that there is an authorization check for the endpoint {endpoint.method} {endpoint.path} to verify that the user is authorized to access the requested resource.",
+                )
 
         return None
